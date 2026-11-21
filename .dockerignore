@@ -3,3 +3,4 @@
 .pytest_cache
 .venv
 *.log
+.git/global-law-cache

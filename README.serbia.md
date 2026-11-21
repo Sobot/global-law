@@ -18,7 +18,7 @@ Relevantni odgovori sadrže `trailers` (izvorni ključevi i prve vrednosti), `tr
 
 ## CI/CD
 
-Workflow `serbia.yml` testira i objavljuje image u GHCR. Na rasporedu osvežava samo pin srpskog korpusa. Za probni deployment potrebno je podesiti GitHub environment `test`, promenljive `AWS_DEPLOY_ROLE` (OIDC role) i `AWS_INSTANCE_ID` (EC2 sa Dockerom i SSM agentom), dozvoliti instanci da čita image i postaviti HTTPS reverse proxy. Kontejner sluša samo na lokalnom portu 8080 instance.
+Workflow `serbia.yml` testira i objavljuje image u GHCR. Na rasporedu osvežava samo pin srpskog korpusa. Na grani `main` deployment koristi namenski AWS OIDC role (bez statičkih AWS ključeva), Systems Manager i skriptu `tools/deploy_serbia_test.sh`. Ako GHCR zahteva autentikaciju, isti source i corpus pin se izgrade na instanci. Kontejner sluša samo na lokalnom portu 8080 instance; nginx i CloudFront omogućavaju HTTPS.
 
 ## Test
 

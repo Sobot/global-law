@@ -8,6 +8,9 @@ on:
     - cron: '25 4 * * *'
 permissions:
   contents: read
+concurrency:
+  group: serbia-mcp-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -16,6 +19,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.image.outputs.name }}
+      corpus: ${{ steps.image.outputs.corpus }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,6 +47,7 @@ jobs:
           pin=$(git -C serbia/national/acts rev-parse --short HEAD)
           image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA:0:12}-$pin"
           echo "name=$image" >> "$GITHUB_OUTPUT"
+          echo "corpus=$(git -C serbia/national/acts rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           docker build -t "$image" .
       - name: Publish container
         if: github.event_name != 'pull_request'
@@ -53,24 +58,32 @@ jobs:
           echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker push "$IMAGE"
   deploy-test:
-    if: github.event_name != 'pull_request' && vars.AWS_DEPLOY_ROLE != '' && vars.AWS_INSTANCE_ID != ''
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
-    environment: test
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          role-to-assume: arn:aws:iam::413560124352:role/serbia-law-mcp-test-github-deploy
           aws-region: eu-central-1
       - name: Deploy image through Systems Manager
         env:
           IMAGE: ${{ needs.build.outputs.image }}
-          INSTANCE: ${{ vars.AWS_INSTANCE_ID }}
+          CORPUS: ${{ needs.build.outputs.corpus }}
+          SOURCE: ${{ github.sha }}
+          INSTANCE: i-01396c06c547ccf79
         run: |
-          commands=$(jq -nc --arg image "$IMAGE" '{commands:["docker pull " + $image,"docker rm -f serbia-law-mcp || true","docker run -d --restart unless-stopped --name serbia-law-mcp -p 127.0.0.1:8080:8080 " + $image,"curl --fail --retry 20 --retry-all-errors http://127.0.0.1:8080/health"]}')
+          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"git checkout --detach " + $source,"bash tools/deploy_serbia_test.sh " + $source + " " + $corpus + " " + $image]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
-          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE"
-          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE"
+          for attempt in $(seq 1 180); do
+            status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)
+            case "$status" in
+              Success) aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE"; exit 0 ;;
+              Failed|Cancelled|TimedOut|Cancelling) aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          exit 1
