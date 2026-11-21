@@ -14,7 +14,9 @@ Endpoint: `/mcp` (Streamable HTTP); `/health` (provera spremnosti). STDIO: `sh t
 
 ## Reference
 
-Relevantni odgovori sadrže `trailers` (izvorni ključevi i prve vrednosti), `trailers_all` (sve vrednosti, uključujući ponovljene), `commit_url` i `file_url` kada odgovarajući MD fajl postoji u commitu. `file_url` u rezultatima pretrage bez datuma pokazuje na pin korpusa, ne na pojedinačnu izmenu. `In-force` je pravni datum, a ne datum Git commita. Zvanične reference su i dalje deo odgovora.
+Relevantni odgovori dodaju `commit_url` uz konkretnu izmenu i `file_url` uz verziju člana kada odgovarajući MD fajl postoji u commitu. `read_law` čuva postojeća pravna polja, a `law_details` i dalje vraća originalne `message`, `trailers` i `trailers_all`, uz `provision_files` sa permalinkovima prvih 60 izmenjenih članova i oznaku `provision_files_truncated` ako ih ima više. Ostali alati ne dupliraju trailere.
+
+`search_law` i `list_provisions` daju link na verziju člana za datum upita. `find_provision` nema istorijski datum i njegov link pokazuje na pin korpusa, ne na pojedinačnu izmenu. `In-force` je pravni datum, a ne datum Git commita. Zvanične reference ostaju primarni pravni izvor; GitHub linkovi služe proveri verzije u korpusu.
 
 ## CI/CD
 
