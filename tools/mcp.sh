@@ -8,6 +8,7 @@
 # which every clone has and which runs it from the top of the clone with a POSIX shell, Git for Windows included.
 #   sh tools/mcp.sh
 cd "$(dirname "$0")/.." || exit 1
+export SERBIA_LAW_MCP=1 GLOBAL_LAW_JURISDICTIONS=serbia
 why=''
 for p in python3 python py python3.14 python3.13 python3.12 python3.11 python3.10 python3.9; do
   "$p" -c 'import sys; sys.exit(sys.version_info < (3, 9))' 2>/dev/null || continue

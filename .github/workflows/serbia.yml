@@ -1,0 +1,76 @@
+name: Serbia MCP CI and deployment
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '25 4 * * *'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.image.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+      - name: Checkout complete Serbian history only
+        run: git submodule update --init serbia/national/acts
+      - name: Refresh upstream Serbian pin on scheduled builds
+        if: github.event_name == 'schedule'
+        run: |
+          git fetch --depth 1 https://github.com/lexifina/global-law.git main
+          pin=$(git ls-tree FETCH_HEAD serbia/national/acts | awk '{print $3}')
+          test -n "$pin"
+          git -C serbia/national/acts fetch origin "$pin"
+          git -C serbia/national/acts checkout --detach "$pin"
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -am "Refresh Serbian corpus to $pin" || git diff --quiet HEAD
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements-serbia.txt
+      - run: python -m unittest discover -s tests -p test_serbia_refs.py -v
+      - name: Build container
+        id: image
+        run: |
+          pin=$(git -C serbia/national/acts rev-parse --short HEAD)
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA:0:12}-$pin"
+          echo "name=$image" >> "$GITHUB_OUTPUT"
+          docker build -t "$image" .
+      - name: Publish container
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE"
+  deploy-test:
+    if: github.event_name != 'pull_request' && vars.AWS_DEPLOY_ROLE != '' && vars.AWS_INSTANCE_ID != ''
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    environment: test
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+          aws-region: eu-central-1
+      - name: Deploy image through Systems Manager
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          INSTANCE: ${{ vars.AWS_INSTANCE_ID }}
+        run: |
+          commands=$(jq -nc --arg image "$IMAGE" '{commands:["docker pull " + $image,"docker rm -f serbia-law-mcp || true","docker run -d --restart unless-stopped --name serbia-law-mcp -p 127.0.0.1:8080:8080 " + $image,"curl --fail --retry 20 --retry-all-errors http://127.0.0.1:8080/health"]}')
+          command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
+          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE"
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE"
