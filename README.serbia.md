@@ -20,7 +20,11 @@ Relevantni odgovori dodaju `commit_url` uz konkretnu izmenu i `file_url` uz verz
 
 ## CI/CD
 
-Workflow `serbia.yml` testira i objavljuje image u GHCR. Na rasporedu osvežava samo pin srpskog korpusa. Na grani `main` deployment koristi namenski AWS OIDC role (bez statičkih AWS ključeva), Systems Manager i skriptu `tools/deploy_serbia_test.sh`. Ako GHCR zahteva autentikaciju, isti source i corpus pin se izgrade na instanci. Kontejner sluša samo na lokalnom portu 8080 instance; nginx i CloudFront omogućavaju HTTPS.
+Workflow `serbia.yml` koristi mali runtime image iz GHCR, čiji tag zavisi samo od Dockerfile-a i Python zavisnosti. Source i pin srpskog korpusa testiraju se u tom image-u. Na rasporedu se osvežava samo pin korpusa; ako iste verzije već rade, deployment preskače restart.
+
+Na grani `main` deployment koristi postojeći AWS OIDC role, Systems Manager i `tools/deploy_serbia_test.sh`. EC2 zadržava kompletan checkout u `/opt/serbia-law-mcp`; Git istorija se inkrementalno preuzima, a `.git/global-law-cache` ostaje na disku između deploymenta. Checkout je u kontejneru read-only, dok je samo cache upisiv. Ako GHCR nije dostupan, na instanci se gradi samo runtime iz dva ulazna fajla. Neuspešan deployment vraća prethodne Git pinove i kontejner.
+
+Kontejner sluša samo na lokalnom portu 8080 instance; nginx i CloudFront omogućavaju HTTPS. Za lokalni Docker test prvo inicijalizujte srpski submodule i montirajte checkout i cache isto kao CI (videti workflow).
 
 ## Test
 

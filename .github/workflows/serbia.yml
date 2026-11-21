@@ -25,39 +25,62 @@ jobs:
         with:
           fetch-depth: 1
           submodules: false
+          persist-credentials: false
       - name: Checkout complete Serbian history only
         run: git submodule update --init serbia/national/acts
-      - name: Refresh upstream Serbian pin on scheduled builds
-        if: github.event_name == 'schedule'
+      - name: Refresh upstream Serbian pin for deployments
+        if: github.event_name != 'pull_request'
         run: |
-          git fetch --depth 1 https://github.com/lexifina/global-law.git main
-          pin=$(git ls-tree FETCH_HEAD serbia/national/acts | awk '{print $3}')
-          test -n "$pin"
-          git -C serbia/national/acts fetch origin "$pin"
+          pin=$(curl --fail --silent --show-error --retry 3 'https://api.github.com/repos/lexifina/global-law/contents/serbia/national/acts?ref=main' | jq -er '.sha')
+          [[ "$pin" =~ ^[0-9a-f]{40}$ ]]
+          if ! git -C serbia/national/acts cat-file -e "$pin^{commit}" 2>/dev/null; then
+            git -C serbia/national/acts fetch origin "$pin"
+          fi
           git -C serbia/national/acts checkout --detach "$pin"
-          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -am "Refresh Serbian corpus to $pin" || git diff --quiet HEAD
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - run: pip install -r requirements-serbia.txt
-      - run: python -m unittest discover -s tests -p test_serbia_refs.py -v
-      - name: Build container
+          if ! git diff --quiet -- serbia/national/acts; then
+            git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -m "Refresh Serbian corpus to $pin" -- serbia/national/acts
+          fi
+      - name: Runtime image identity
         id: image
         run: |
-          pin=$(git -C serbia/national/acts rev-parse --short HEAD)
-          image="ghcr.io/${GITHUB_REPOSITORY,,}:${GITHUB_SHA:0:12}-$pin"
+          key=$(sha256sum Dockerfile requirements-serbia.txt | sha256sum | cut -c1-32)
+          image="ghcr.io/${GITHUB_REPOSITORY,,}:runtime-$key"
           echo "name=$image" >> "$GITHUB_OUTPUT"
           echo "corpus=$(git -C serbia/national/acts rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          docker build -t "$image" .
-          docker run --rm "$image" python -m unittest discover -s tests -p test_serbia_refs.py -v
-      - name: Publish container
+      - name: Authenticate to GHCR
         if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      - name: Reuse or build runtime image
+        id: runtime
+        env:
           IMAGE: ${{ steps.image.outputs.name }}
         run: |
-          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "$IMAGE"
+          if [[ "$GITHUB_EVENT_NAME" != pull_request ]] && docker pull "$IMAGE"; then
+            echo "Reusing published runtime"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            docker build -t "$IMAGE" .
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+          docker image inspect "$IMAGE" --format 'Runtime image: {{.Size}} bytes'
+      - name: Test exact runtime and corpus with persistent cache
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          cache="$PWD/.git/global-law-cache"
+          sudo install -d -o 10001 -g 10001 -m 0755 "$cache"
+          docker run --rm \
+            --mount "type=bind,src=$PWD,dst=/app,readonly" \
+            --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
+            "$IMAGE" python -m unittest discover -s tests -p test_serbia_refs.py -v
+          test -n "$(find "$cache" -type f -print -quit)"
+      - name: Publish tested runtime
+        if: github.event_name != 'pull_request' && steps.runtime.outputs.publish == 'true'
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: docker push "$IMAGE"
   deploy-test:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build
@@ -77,7 +100,7 @@ jobs:
           SOURCE: ${{ github.sha }}
           INSTANCE: i-01396c06c547ccf79
         run: |
-          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait || test -d /opt/serbia-law-mcp/.git","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"git checkout --detach " + $source,"bash tools/deploy_serbia_test.sh " + $source + " " + $corpus + " " + $image]}')
+          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait || test -d /opt/serbia-law-mcp/.git","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
           for attempt in $(seq 1 180); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)

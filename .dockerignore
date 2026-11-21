@@ -1,6 +1,4 @@
-**/__pycache__
-**/*.pyc
-.pytest_cache
-.venv
-*.log
-.git/global-law-cache
+# Runtime image: only dependency inputs. Never send Git data or the checkout.
+**
+!Dockerfile
+!requirements-serbia.txt
