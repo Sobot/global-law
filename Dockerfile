@@ -2,6 +2,7 @@ FROM python:3.12-slim
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/* && useradd --create-home mcp
 WORKDIR /app
+RUN chown mcp:mcp /app
 COPY requirements-serbia.txt .
 RUN pip install --no-cache-dir -r requirements-serbia.txt
 COPY --chown=mcp:mcp . .
