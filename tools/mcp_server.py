@@ -8125,14 +8125,24 @@ def _declared_rule(corpus: str, rel: str) -> tuple[str, str, re.Pattern | None] 
         return None
     number = m.group('n' if 'n' in m.re.groupindex else 2) or ''
     numerals = str(rule.get('numerals') or '').split(':')[0].strip().lower()
+    pattern = rule['cites']
+    before, after = rule.get('not_preceded_by'), rule.get('not_followed_by')
+    # Older Japanese manifests express the branch exclusion as a lookahead, unsupported by git grep.
+    if str(rule.get('n_format') or '').startswith('kanji-article:') and pattern == '第{n}(?![のノ][一二三四五六七八九十])':
+        numerals = 'ja'
+        pattern, before, after = '第{n}', '[法令則）]', '[のノ][一二三四五六七八九十]'
     if numerals:
         style = 'zh' if numerals.startswith('zh') else 'ja' if numerals.startswith('ja') else None
         if not style:
             raise UnusableCitationRule(f'its numerals ({numerals!r}) are not "zh" or "ja"')
+        if style == 'zh' and m.lastindex and m.lastindex >= 3 and m.group(3):
+            branch = kanji_number(m.group(3))
+            if branch is None:
+                return None
+            number += '-' + str(branch)
         number = cjk_article(number, style)
         if not number:
             return None
-    pattern = rule['cites']
     for name, value in {**m.groupdict(), 'n': number}.items():
         value = re.escape(value or '')
         if name == 'n' and numerals.startswith('ja'):
@@ -8143,7 +8153,6 @@ def _declared_rule(corpus: str, rel: str) -> tuple[str, str, re.Pattern | None] 
     except UserError as e:
         raise UnusableCitationRule(f'git cannot use its cites pattern {pattern!r}: {str(e).rstrip(".")}') from None
     check = None
-    before, after = rule.get('not_preceded_by'), rule.get('not_followed_by')
     if before or after:
         py = pattern.replace('[[:space:]]', r'\s').replace('[[:alnum:]]', r'\w')
         try:

@@ -966,7 +966,7 @@ class ScopeRules(unittest.TestCase):
         # China and Japan write the number in words; their rules (a description and a lookahead until audit row 55)
         # are usable, and find the citations in the laws' own words (Criminal Law art. 267; Civil Code art. 91).
         from unittest import mock
-        real = {'china/national/acts': ('xingfa/art-263.md', '携带凶器抢夺的，依照本法第二百六十三条的规定定罪处罚。',
+        real = {'china/national/acts': ('法律/刑法/第263条.md', '携带凶器抢夺的，依照本法第二百六十三条的规定定罪处罚。',
                                         '依照本法第二百六十三条之一的规定'),
                 'japan/national/acts': ('minpo/art-090.md', '第九十条の規定により無効とされた', '第九十条の二')}
         for corpus, (rel, hit, miss) in real.items():
@@ -975,7 +975,7 @@ class ScopeRules(unittest.TestCase):
             with mock.patch.object(self.m.law, 'manifest', lambda: {'corpora': [{'path': corpus, 'citation': rules[corpus]}]}):
                 folder, pattern = self.m.citation_pattern(rel, corpus)
                 check = self.m.citation_line_check(corpus, rel)
-            self.assertEqual(folder, rel.split('/')[0])
+            self.assertEqual(folder, rel.rsplit('/', 1)[0])
             self.assertTrue(re.search(pattern, hit) and check.search(hit), (corpus, hit))
             self.assertFalse(check.search(miss), (corpus, miss))
 
@@ -1178,7 +1178,7 @@ class Launching(unittest.TestCase):
                                       input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
                                       capture_output=True, timeout=120)
                 reply = json.loads(proc.stdout.decode('utf-8').splitlines()[0])
-                self.assertEqual(reply['result']['serverInfo']['name'], 'global-law', proc.stderr[-300:])
+                self.assertEqual(reply['result']['serverInfo']['name'], 'serbia-law-mcp', proc.stderr[-300:])
 
     def test_claude_code_approves_the_server(self):
         settings = json.loads((ROOT / '.claude/settings.json').read_text(encoding='utf-8'))
@@ -1204,9 +1204,16 @@ class Warming(unittest.TestCase):
         with mock.patch.object(self.m.subprocess, 'Popen') as popen:
             popen.return_value.__enter__.return_value.communicate.return_value = (b'', b'')
             self.m.git_run(['git', 'rev-parse', 'HEAD'], capture_output=True)
-            self.m.git_run(['git', 'cat-file', '--batch'], input=b'', capture_output=True)
+            child = popen.return_value
+
+            def read_input(*args, **kw):
+                self.assertEqual(kw['stdin'].read(), b'test input')
+                return child
+
+            popen.side_effect = read_input
+            self.m.git_run(['git', 'cat-file', '--batch'], input=b'test input', capture_output=True)
         self.assertIs(popen.call_args_list[0].kwargs['stdin'], subprocess.DEVNULL)
-        self.assertIs(popen.call_args_list[1].kwargs['stdin'], subprocess.PIPE)  # input= gets a pipe of its own
+        self.assertTrue(popen.call_args_list[1].kwargs['stdin'].closed)  # git's private input file is released
 
     def test_warming_lists_every_corpus(self):
         self.m.warm()
@@ -1401,6 +1408,7 @@ class Dating(unittest.TestCase):
         nexts = {('act',): ['2020-01-01']}
         with mock.patch.object(self.law, 'corpus_of', lambda path: ('x/y/z', path.removeprefix('x/y/z/'))), \
                 mock.patch.object(self.law, 'history', lambda path: hist), \
+                mock.patch.object(self.law, 'act_end', return_value=None), \
                 mock.patch.object(self.law, 'corrections', lambda corpus: fixes), \
                 mock.patch.object(self.law, 'act_next', lambda corpus, paths, after: next((d for d in nexts[tuple(paths)] if d > after), None)):
             on = lambda date: self.law.file_commit(date, 'x/y/z/act/a.md')  # noqa: E731
@@ -2203,13 +2211,14 @@ class RulesAndKinds(unittest.TestCase):
         from test_law_fixtures import Tree, run
         t = cls.t = Tree()
         shutil.copy(ROOT / 'tools' / 'mcp_server.py', t.root / 'tools' / 'mcp_server.py')
-        criminal = {'xingfa/art-263.md': '# 第二百六十三条\n\n以暴力、胁迫或者其他方法抢劫公私财物的，处三年以上十年以下有期徒刑。\n',
-                    'xingfa/art-263-1.md': '# 第二百六十三条之一\n\n另一条。\n',
-                    'xingfa/art-267.md': '# 第二百六十七条\n\n携带凶器抢夺的，依照本法第二百六十三条的规定定罪处罚。\n',
-                    'xingfa/art-268.md': '# 第二百六十八条\n\n依照本法第二百六十三条之一的规定处罚。\n',
-                    'xingfa/art-1010.md': '# 第一千零一十条\n\n依照本法第二百六十三条之二的规定。\n'}
-        for path in (cls.CN, cls.OLD):
-            t.corpus(path).commit('中华人民共和国刑法', criminal, In_force='2021-03-01', Kind='law')
+        criminal = {'法律/刑法/第263条.md': '# 第二百六十三条\n\n以暴力、胁迫或者其他方法抢劫公私财物的，处三年以上十年以下有期徒刑。\n',
+                    '法律/刑法/第263条之一.md': '# 第二百六十三条之一\n\n另一条。\n',
+                    '法律/刑法/第267条.md': '# 第二百六十七条\n\n携带凶器抢夺的，依照本法第二百六十三条的规定定罪处罚。\n',
+                    '法律/刑法/第268条.md': '# 第二百六十八条\n\n依照本法第二百六十三条之一的规定处罚。\n',
+                    '法律/刑法/第1010条.md': '# 第一千零一十条\n\n依照本法第二百六十三条之二的规定。\n'}
+        t.corpus(cls.OLD).commit('中华人民共和国刑法', {'xingfa/art-263.md': criminal['法律/刑法/第263条.md']},
+                                 In_force='2021-03-01', Kind='law')
+        t.corpus(cls.CN).commit('中华人民共和国刑法', criminal, In_force='2021-03-01', Kind='law')
         t.corpus(cls.JP).commit('民法', {
             'minpo/art-090.md': '# 第九十条\n\n公の秩序又は善良の風俗に反する法律行為は、無効とする。\n',
             'minpo/art-090-2.md': '# 第九十条の二\n\n枝番号の条。\n',
@@ -2255,10 +2264,10 @@ class RulesAndKinds(unittest.TestCase):
                       for p in g['provisions']), r
 
     def test_chinese_articles_cited_in_numerals(self):
-        cites, _ = self.citing(f'{self.CN}/xingfa/art-263.md')
-        self.assertEqual(cites, [f'{self.CN}/xingfa/art-267.md'])  # not 第二百六十三条之一 or 之二, not its own heading
-        cites, _ = self.citing(f'{self.CN}/xingfa/art-263-1.md')
-        self.assertEqual(cites, [f'{self.CN}/xingfa/art-268.md'])
+        cites, _ = self.citing(f'{self.CN}/法律/刑法/第263条.md')
+        self.assertEqual(cites, [f'{self.CN}/法律/刑法/第267条.md'])  # not 第二百六十三条之一 or 之二, not its own heading
+        cites, _ = self.citing(f'{self.CN}/法律/刑法/第263条之一.md')
+        self.assertEqual(cites, [f'{self.CN}/法律/刑法/第268条.md'])
 
     def test_japanese_articles_cited_in_kanji(self):
         cites, _ = self.citing(f'{self.JP}/minpo/art-090.md')
@@ -4807,6 +4816,9 @@ class ProvisionByActAndNumber(unittest.TestCase):
         self.assertEqual(self.m.NL_BW.fullmatch('artikel 6:162 BW').groups(), ('6', '162'))
         self.assertEqual(self.m.NL_BW.fullmatch('art. 7a:1576 BW').groups(), ('7a', '1576'))
         self.assertIsNone(self.m.NL_BW.fullmatch('artikel 162 BW'))
+
+    @needs(IE_C)
+    def test_irish_act_with_an_absent_section(self):
         # the act is named and has no file of that number: the act itself, not a search of every heading
         got = self.find('Data Protection Act 2018 section 99999', 'ireland')
         self.assertEqual((got['read_as'], [r['path'] for r in got['results']]), ('act', [IE_C + '/data-protection-act-2018']))
