@@ -1,6 +1,6 @@
-# The public monitor: every hour, from GitHub rather than the machine that publishes, check that updates are still
-# being published (data/status.json refreshed within 2 hours, updates running) and that freshness is being recomputed
-# (data/freshness.json no older than a day). A failed run notifies the maintainers and turns the README badge red.
+# The Serbian monitor: every hour, check that the daily Serbian sync (sync-freshness.yml) has succeeded within the last
+# 26 hours and that serbia/national/acts is pinned to the commit lexifina/global-law pins. Report the corpus's
+# freshness row; a stale row is upstream's to fix, so it warns rather than fails. A failed run notifies the maintainers.
 name: monitor
 on:
   schedule:
@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
+env:
+  CORPUS: serbia/national/acts
 jobs:
   monitor:
     runs-on: ubuntu-latest
@@ -17,13 +20,32 @@ jobs:
           fetch-depth: 1
           submodules: false
           sparse-checkout: |
-            data
+            data/freshness.tsv
             tools/freshness.py
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.13'
-      - name: Updates running, status and freshness current
-        run: python tools/freshness.py --health
-      - name: Freshness summary
+      - name: Serbian sync ran within 26 hours
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          last=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow sync-freshness.yml --branch main \
+            --status success --limit 1 --json createdAt --jq '.[0].createdAt // empty')
+          [ -n "$last" ] || { echo "::error::sync-freshness.yml has never succeeded on main"; exit 1; }
+          age=$(( $(date +%s) - $(date -d "$last" +%s) ))
+          echo "last successful Serbian sync: $last ($((age / 3600)) h ago)"
+          [ "$age" -le 93600 ] || { echo "::error::Serbian sync last succeeded $last, over 26 hours ago"; exit 1; }
+      - name: Serbian pin matches upstream
+        run: |
+          ours=$(git ls-tree HEAD "$CORPUS" | awk '{print $3}')
+          up=$(curl --fail --silent --show-error --retry 3 \
+            "https://api.github.com/repos/lexifina/global-law/contents/$CORPUS?ref=main" | jq -er '.sha')
+          echo "pinned here: $ours, upstream: $up"
+          [ "$ours" = "$up" ] || echo "::warning::$CORPUS is behind upstream until the next sync ($ours -> $up)"
+      - name: Serbian freshness
         if: always()
-        run: python tools/freshness.py --summary
+        run: |
+          python tools/freshness.py "$CORPUS" 
+          status=$(awk -F'\t' -v c="$CORPUS" '$1 == c {print $3}' data/freshness.tsv)
+          [ "$status" = current ] || echo "::warning::$CORPUS freshness is '$status' (as recorded upstream)"

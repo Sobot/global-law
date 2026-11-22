@@ -1,0 +1,62 @@
+# Follow lexifina/global-law for Serbian law only: move the serbia/national/acts pin to the commit upstream pins, and
+# copy upstream's serbia/national/acts row into data/freshness.tsv. No other corpus, data file or page is touched.
+name: sync-freshness
+on:
+  schedule:
+    - cron: '40 3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: sync-freshness
+  cancel-in-progress: false
+env:
+  CORPUS: serbia/national/acts
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          submodules: false
+          sparse-checkout: |
+            data/freshness.tsv
+          sparse-checkout-cone-mode: false
+      - name: Read upstream's Serbian pin and freshness row
+        run: |
+          pin=$(curl --fail --silent --show-error --retry 3 \
+            "https://api.github.com/repos/lexifina/global-law/contents/$CORPUS?ref=main" | jq -er '.sha')
+          [[ "$pin" =~ ^[0-9a-f]{40}$ ]]
+          curl --fail --silent --show-error --retry 3 -o /tmp/freshness.tsv \
+            https://raw.githubusercontent.com/lexifina/global-law/main/data/freshness.tsv
+          echo "PIN=$pin" >> "$GITHUB_ENV"
+      - name: Update the Serbian pin and row
+        run: |
+          python - <<'PY'
+          import os
+          corpus, pin = os.environ['CORPUS'], os.environ['PIN']
+          def lines(p):
+              return open(p, encoding='utf-8').read().splitlines(keepends=True)
+          up, ours = lines('/tmp/freshness.tsv'), lines('data/freshness.tsv')
+          if up[0] != ours[0]:
+              raise SystemExit('upstream data/freshness.tsv has different columns; not syncing')
+          row = [l for l in up if l.split('\t', 1)[0] == corpus]
+          if len(row) != 1:
+              raise SystemExit(f'upstream has {len(row)} rows for {corpus}')
+          if row[0].split('\t')[6] != pin:
+              print(f'note: upstream row is pinned to {row[0].split(chr(9))[6]}, upstream pin is {pin}')
+          idx = [i for i, l in enumerate(ours) if l.split('\t', 1)[0] == corpus]
+          if len(idx) != 1:
+              raise SystemExit(f'data/freshness.tsv has {len(idx)} rows for {corpus}')
+          ours[idx[0]] = row[0]
+          open('data/freshness.tsv', 'w', encoding='utf-8', newline='').writelines(ours)
+          PY
+          git update-index --add --cacheinfo "160000,$PIN,$CORPUS"
+      - name: Commit if changed
+        run: |
+          git add data/freshness.tsv
+          git diff --cached --quiet && { echo 'Serbian pin and freshness already current'; exit 0; }
+          git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com \
+            commit -m "Sync Serbian law from lexifina/global-law ($PIN)"
+          git push
