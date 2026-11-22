@@ -37,10 +37,12 @@ jobs:
           echo "last successful Serbian sync: $last ($((age / 3600)) h ago)"
           [ "$age" -le 93600 ] || { echo "::error::Serbian sync last succeeded $last, over 26 hours ago"; exit 1; }
       - name: Serbian pin matches upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           ours=$(git ls-tree HEAD "$CORPUS" | awk '{print $3}')
-          up=$(curl --fail --silent --show-error --retry 3 \
-            "https://api.github.com/repos/lexifina/global-law/contents/$CORPUS?ref=main" | jq -er '.sha')
+          up=$(gh api "repos/lexifina/global-law/contents/$CORPUS?ref=main" --jq '.sha') ||
+            { echo "::warning::could not read upstream's pin for $CORPUS"; exit 0; }
           echo "pinned here: $ours, upstream: $up"
           [ "$ours" = "$up" ] || echo "::warning::$CORPUS is behind upstream until the next sync ($ours -> $up)"
       - name: Serbian freshness
