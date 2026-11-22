@@ -187,10 +187,14 @@ class GenericLauncher(unittest.TestCase):
             no_git = Path(temporary) / 'not-a-checkout'
             no_git.mkdir()
             (no_git / 'manifest.json').write_text('{}', encoding='utf-8')
+            broken_git = Path(temporary) / 'broken-gitdir'
+            (broken_git / '.git').mkdir(parents=True)
+            (broken_git / 'manifest.json').write_text('{"corpora": []}', encoding='utf-8')
             invalid_roots = (
                 ('relative/path', 'GLOBAL_LAW_ROOT must be an absolute path'),
                 (temporary, 'GLOBAL_LAW_ROOT must contain manifest.json'),
                 (str(no_git), 'GLOBAL_LAW_ROOT must be a Git checkout'),
+                (str(broken_git), 'GLOBAL_LAW_ROOT must be the root of a usable Git worktree'),
             )
             for value, message in invalid_roots:
                 result = subprocess.run(
@@ -198,6 +202,28 @@ class GenericLauncher(unittest.TestCase):
                     env={**os.environ, 'GLOBAL_LAW_ROOT': value, 'PYTHONPATH': str(ROOT / 'tools')})
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
+
+    def test_linked_worktree_is_a_valid_data_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / 'repository'
+            repository.mkdir()
+            linked = Path(temporary) / 'linked'
+            env = {**os.environ, 'GIT_AUTHOR_NAME': 'Test', 'GIT_AUTHOR_EMAIL': 'test@example.org',
+                   'GIT_COMMITTER_NAME': 'Test', 'GIT_COMMITTER_EMAIL': 'test@example.org'}
+            subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=repository, env=env, check=True)
+            (repository / 'manifest.json').write_text('{"corpora": []}\n', encoding='utf-8')
+            subprocess.run(['git', 'add', 'manifest.json'], cwd=repository, env=env, check=True)
+            subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.org',
+                            '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'Initial manifest'],
+                           cwd=repository, env=env, check=True)
+            subprocess.run(['git', 'worktree', 'add', '-q', '--detach', str(linked), 'HEAD'],
+                           cwd=repository, env=env, check=True)
+            self.assertTrue((linked / '.git').is_file())
+            result = subprocess.run([sys.executable, '-c', 'import law; print(law.ROOT)'],
+                                    cwd=ROOT, text=True, capture_output=True,
+                                    env={**os.environ, 'GLOBAL_LAW_ROOT': str(linked), 'PYTHONPATH': str(ROOT / 'tools')})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(linked.resolve()))
 
 
 class McpServer(unittest.TestCase):

@@ -48,6 +48,23 @@ def _data_root() -> Path:
         raise ValueError(f'GLOBAL_LAW_ROOT must contain manifest.json: {root}')
     if not (root / '.git').exists():
         raise ValueError(f'GLOBAL_LAW_ROOT must be a Git checkout: {root}')
+    try:
+        worktree = _subprocess.run(['git', '-C', str(root), 'rev-parse', '--show-toplevel'],
+                                   capture_output=True, encoding='utf-8')
+    except OSError as error:
+        raise ValueError('GLOBAL_LAW_ROOT must identify a usable Git worktree') from error
+    if worktree.returncode or Path(worktree.stdout.strip()).resolve() != root:
+        raise ValueError('GLOBAL_LAW_ROOT must be the root of a usable Git worktree')
+    manifest = _subprocess.run(['git', '-C', str(root), 'show', 'HEAD:manifest.json'],
+                               capture_output=True, encoding='utf-8')
+    if manifest.returncode:
+        raise ValueError('GLOBAL_LAW_ROOT must have a manifest.json committed at HEAD')
+    try:
+        committed_manifest = json.loads(manifest.stdout)
+    except json.JSONDecodeError as error:
+        raise ValueError('GLOBAL_LAW_ROOT must have valid manifest.json content committed at HEAD') from error
+    if not isinstance(committed_manifest, dict):
+        raise ValueError('GLOBAL_LAW_ROOT must have a JSON object in manifest.json committed at HEAD')
     return root
 
 

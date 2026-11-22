@@ -206,8 +206,9 @@ and `py` that is new enough:
 To start the server by hand, `sh tools/mcp.sh` speaks MCP on stdin and stdout.
 
 For a trusted runtime that keeps code and data in separate checkouts, set `GLOBAL_LAW_ROOT` to the absolute path of
-the Git checkout containing `manifest.json` and the corpus gitlinks. The Python modules still load from their own
-`tools` directory; this setting changes only the data/repository root. Invalid paths are rejected during import.
+the Git worktree root containing the corpus gitlinks and a valid `manifest.json` committed at `HEAD` (linked worktrees
+are supported). The Python modules still load from their own `tools` directory; this setting changes only the
+data/repository root. Invalid paths are rejected during import.
 
 The first answer after starting reads the whole timeline and lists every corpus, a few seconds on a full checkout. The
 server does that as soon as it starts, so by the time a client asks, it is usually done.
