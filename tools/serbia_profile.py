@@ -224,8 +224,8 @@ def read_law(args):
         note = (f" The act's folder identifies its first publication year as {match[1]} "
                 f"and its publication identifier as {match[2]}; "
                 "this is not an enactment or commencement date and does not rule out retroactive effect. "
-                "Check the official publication and any earlier legislation; the record does not identify "
-                "a predecessor or an equivalent provision.")
+                "This lookup does not verify a predecessor or an equivalent provision. Check the official publication "
+                "and search earlier acts by title and subject; article numbers and wording can differ.")
         revised = why.replace(generic, '.' + note)
         text = text.replace(why, revised, 1)
         data = {**data, 'why': revised, 'summary': upstream.first_line(revised),

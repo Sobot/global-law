@@ -65,7 +65,7 @@ class SerbiaProfileTest(unittest.TestCase):
         self.assertEqual(before['publication_year'], 2011)
         self.assertIn('not an enactment or commencement date', before['why'])
         self.assertIn('does not rule out retroactive effect', before['why'])
-        self.assertIn('does not identify a predecessor', before['why'])
+        self.assertIn('does not verify a predecessor', before['why'])
         self.assertNotIn('may well have been in force then', before['why'])
         self.assertNotIn('file_url', before)
         resolved = self.call('get_provision', {'citation': 'cl. 26 st. 1 ZKP', 'date': '2010-12-31'})
