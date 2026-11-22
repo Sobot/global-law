@@ -15,6 +15,9 @@ from starlette.responses import JSONResponse
 from starlette.routing import Route
 
 import mcp_server as upstream
+import serbia_profile
+
+serbia_profile.install()
 
 server = Server('serbia-law-mcp', version='0.1.0', instructions=upstream.INSTRUCTIONS)
 limiter = anyio.CapacityLimiter(1)  # upstream shares caches and processes calls in order
