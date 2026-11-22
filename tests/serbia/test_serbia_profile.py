@@ -50,6 +50,12 @@ class SerbiaProfileTest(unittest.TestCase):
             self.assertFalse(got['subdivision_verified'])
             self.assertTrue(got['cite']['official_url'])
 
+    def test_morphological_search_in_historical_article(self):
+        result = self.call('search_law', {'query': 'sastava sudskog veca', 'morphology': True,
+                                           'jurisdiction': PATH, 'date': '2019-05-29'})
+        self.assertTrue(result['morphology_applied'])
+        self.assertTrue(any(r['path'] == PATH and r.get('file_url') for r in result['results']), result)
+
     def test_exact_folder_and_unresolved(self):
         got = self.call('get_provision', {'law': FOLDER, 'article': 21, 'date': '2019-05-29', 'include_text': False})
         self.assertEqual(got['path'], PATH)
