@@ -617,6 +617,12 @@ itself in each result's `_meta`, gives cache hints on list and read results, and
 error -32022 listing the versions it supports. Legacy clients (2025-11-25 back to 2024-11-05) open with `initialize`
 and are served as before.
 
+The public engine has no profile auto-discovery or jurisdiction-specific defaults. An application can import
+`tools/mcp_server.py`, set its server metadata, instructions and tool/resource registries before calling `main()`, and
+optionally set `prepare_tool_arguments(name, args) -> args` and
+`enrich_tool_result(name, text, data) -> (text, data)`. The default hooks are unset, so the public stdio launcher
+always starts the generic engine.
+
 ## Security
 
 The server is read-only and local. It reads the git repository it sits in, never uses the network and never runs a

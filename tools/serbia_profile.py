@@ -9,6 +9,7 @@ import mcp_server as upstream
 import serbia_refs
 import serbia_stemmer
 import serbia_fts
+import skill_resources
 from serbia_citations import ALIASES, GAZETTE, article_number, gazettes, normalize, parse, title_forms
 
 CORPUS = serbia_refs.CORPUS
@@ -326,9 +327,23 @@ def tool_list():
     return tools
 
 
+def prepare_tool_arguments(name, args):
+    if 'jurisdiction' in upstream.PROPERTIES.get(name, ()) and not args.get('jurisdiction'):
+        return {**args, 'jurisdiction': 'serbia'}
+    return args
+
+
+def enrich_tool_result(name, text, data):
+    return serbia_refs.enrich(name, text, data, upstream.corpus_head, upstream.links_from_body)
+
+
 def install():
     """Install only in the Serbia entry points, never in upstream's global server."""
+    upstream.SERVER = {'name': 'serbia-law-mcp', 'title': 'Propisi Republike Srbije', 'version': '0.1.0'}
     upstream.INSTRUCTIONS = INSTRUCTIONS
+    upstream.SKILLS = skill_resources.load(upstream.ROOT / 'plugins', 'sr')
+    upstream.prepare_tool_arguments = prepare_tool_arguments
+    upstream.enrich_tool_result = enrich_tool_result
     upstream.search_index = serbia_fts.Index()
     upstream.tool_list = tool_list
     upstream.PROMPTS = {

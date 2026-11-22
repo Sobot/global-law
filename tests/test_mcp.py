@@ -13,6 +13,7 @@ import sys
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 LEGACY_CORPORA = {'gb/uk/send': 'gb/uk/legislation'}  # the UK corpus's path before it held all UK legislation
@@ -109,6 +110,48 @@ class Server:
         self.proc.wait(timeout=30)
         self.proc.stdout.close()
         self.proc.stderr.close()
+
+
+class GenericLauncher(unittest.TestCase):
+    def test_stdio_launcher_uses_generic_engine_even_with_serbia_environment(self):
+        request = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                   'params': {'protocolVersion': '2025-06-18', 'capabilities': {}}}
+        result = subprocess.run(['sh', str(ROOT / 'tools/mcp.sh')], cwd=ROOT, input=json.dumps(request) + '\n',
+                                text=True, capture_output=True, timeout=30,
+                                env={**os.environ, 'SERBIA_LAW_MCP': '1', 'GLOBAL_LAW_JURISDICTIONS': 'serbia'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reply = json.loads(result.stdout.splitlines()[0])
+        self.assertEqual(reply['result']['serverInfo']['name'], 'global-law')
+        self.assertIn('Global law:', reply['result']['instructions'])
+
+    def test_optional_engine_hooks_prepare_arguments_and_enrich_results(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import mcp_server as engine
+
+        seen = {}
+
+        def handler(args):
+            seen.update(args)
+            return 'base result', {'summary': 'base result'}
+
+        def prepare(name, args):
+            return {**args, 'jurisdiction': 'example'}
+
+        def enrich(name, text, data):
+            return text + ' enriched', {**data, 'extension_applied': True}
+
+        message = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                   'params': {'name': 'extension_test', 'arguments': {}}}
+        with patch.object(engine, 'warmed', lambda: None), \
+                patch.dict(engine.HANDLERS, {'extension_test': handler}), \
+                patch.dict(engine.PROPERTIES, {'extension_test': ['jurisdiction']}), \
+                patch.object(engine, 'prepare_tool_arguments', prepare), \
+                patch.object(engine, 'enrich_tool_result', enrich):
+            reply = engine.handle(message)['result']
+
+        self.assertEqual(seen, {'jurisdiction': 'example'})
+        self.assertTrue(reply['structuredContent']['extension_applied'])
+        self.assertEqual(reply['content'][0]['text'], 'base result enriched')
 
 
 class McpServer(unittest.TestCase):
@@ -1178,7 +1221,7 @@ class Launching(unittest.TestCase):
                                       input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
                                       capture_output=True, timeout=120)
                 reply = json.loads(proc.stdout.decode('utf-8').splitlines()[0])
-                self.assertEqual(reply['result']['serverInfo']['name'], 'serbia-law-mcp', proc.stderr[-300:])
+                self.assertEqual(reply['result']['serverInfo']['name'], 'global-law', proc.stderr[-300:])
 
     def test_vscode_connects_to_the_serbian_test_server(self):
         servers = json.loads((ROOT / '.vscode/mcp.json').read_text(encoding='utf-8'))['servers']
