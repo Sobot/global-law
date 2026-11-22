@@ -25,6 +25,21 @@ Konektor prepoznaje oznaku člana i kada je upišete bez kvačica. U ovom primer
 
 Treći primer koristi broj glasila da pronađe [komit sa izmenom](https://github.com/lexifina/serbia-law/commit/09019e8e6a8d73d50b8dfe9a647642cfe35761f7). Za pitanje o važenju navedite i datum koji vas zanima. Ako za taj period nedostaje tekst, odgovor treba da navede granicu dostupne istorije.
 
+Za tematsku pretragu različitih padežnih oblika može se uključiti `search_law(query="naknada štete", morphology=true)`. To je opciona, približna pretraga kratkih fraza (1–3 reči), bez spoljnog API-ja. Redovna pretraga, citati i istorija ostaju nepromenjeni. Rezultati sadrže originalni tekst, ne generisane oblike.
+
+## Benchmark pretrage
+
+Lokalni `tools/serbia_benchmark.py` meri Recall@K, Hit@K, MRR@K i trajanje pretrage na istom datumu i Git pinu. Ne ocenjuje pravno tumačenje. Koristi postojeća [pitanja srb-legal-rag](https://github.com/RatkoNikolic/srb-legal-rag/tree/bd839dc35da24250268e9c95b93d5834ad8ba828/goldens) autora Ratka Nikolića (CC BY 4.0); originalni skup nije kopiran u ovaj repozitorijum.
+
+```sh
+git clone https://github.com/RatkoNikolic/srb-legal-rag.git ../srb-legal-rag
+git -C ../srb-legal-rag checkout bd839dc35da24250268e9c95b93d5834ad8ba828
+python tools/serbia_benchmark.py ../srb-legal-rag/goldens/golden-situational-60.jsonl --date 2026-11-22 --k 10
+python tools/serbia_benchmark.py tests/serbia/morphology-benchmark.jsonl --date 2019-05-29 --k 10
+```
+
+Potreban je postojeći checkout srpskog korpusa sa istorijom. Neusaglašeni identifikatori, nedostajući članci i greške prijavljuju se odvojeno. Rezultati nisu direktno uporedivi sa RAG benchmarkom tačnosti odgovora. Duga situaciona pitanja se ne prepravljaju u ključne reči; morfološko proširenje se posebno proverava kratkim frazama u jediničnim testovima.
+
 ## Uputstva za asistente
 
 Paket sadrži [tri uputstva (skills)](plugins/sr/skills/) za citiranje odredbe, utvrđivanje teksta koji je važio na određeni datum i poređenje verzija. Server ih izlaže kao MCP resurse koje klijent može da pročita.

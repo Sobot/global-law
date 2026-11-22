@@ -5,6 +5,7 @@ import re
 
 import mcp_server as upstream
 import serbia_refs
+import serbia_stemmer
 from serbia_citations import ALIASES, GAZETTE, article_number, gazettes, normalize, parse, title_forms
 
 CORPUS = serbia_refs.CORPUS
@@ -26,7 +27,7 @@ LABELS = {
     'compare_dates': ('Uporedi verzije', 'Uporedi tekst člana na dva datuma i izmene između njih.'),
     'provision_history': ('Istorija člana', 'Sve evidentirane izmene člana, datumi objave i stupanja na snagu.'),
     'laws_between': ('Propisi u periodu', 'Izmene propisa koje su stupile na snagu u datom periodu, uključujući oba datuma.'),
-    'search_law': ('Pretraži tekst propisa', 'Pretraži tekst propisa Srbije na datum, npr. godišnji odmor, naknada štete. Podržava oba pisma.'),
+    'search_law': ('Pretraži tekst propisa', 'Pretraži tekst propisa Srbije na datum, npr. godišnji odmor, naknada štete. Podržava oba pisma. Za različite padeže kratke fraze koristi morphology=true.'),
     'changes_between': ('Izmene između datuma', 'Pronađi odredbe čiji se tekst razlikuje na dva datuma.'),
     'list_provisions': ('Pregled članova propisa', 'Prikaži članove ili pojedinačne propise u folderu na određeni datum.'),
     'search_changes': ('Pretraži izmene i glasnik', 'Pretraži evidenciju izmena, naziv propisa ili broj glasnika, npr. Sl. glasnik RS, br. 35/2019.'),
@@ -202,6 +203,30 @@ def search_changes(args):
     return _BASE['search_changes'](args)
 
 
+def search_law(args):
+    args = dict(args)
+    enabled = args.pop('morphology', False)
+    if type(enabled) is not bool:
+        raise upstream.UserError('morphology mora biti true ili false.')
+    if not enabled:
+        return _BASE['search_law'](args)
+    if args.get('regex') or args.get('case_sensitive'):
+        raise upstream.UserError('morphology se ne kombinuje sa regex ili case_sensitive.')
+    args.setdefault('jurisdiction', 'serbia')
+    scope = upstream.scope_arg(args)
+    if scope != 'serbia' and not scope.startswith('serbia/'):
+        raise upstream.UserError('Morfološka pretraga dostupna je samo za Srbiju.')
+    pattern = serbia_stemmer.phrase_pattern(args.get('query'), upstream.serbian_cyrillic,
+                                          upstream.serbian_plain_pattern)
+    if not pattern:
+        text, data = _BASE['search_law'](args)
+        note = 'Morfološko proširenje nije dostupno za ovaj izraz; korišćena je redovna pretraga.'
+        return note + '\n' + text, {**data, 'morphology_applied': False, 'morphology_note': note}
+    text, data = _BASE['search_law']({**args, 'query': pattern, 'regex': True})
+    note = 'Približna pretraga padežnih oblika; proveri relevantnost izvornog teksta.'
+    return note + '\n' + text, {**data, 'morphology_applied': True, 'morphology_query': args['query'], 'morphology_note': note}
+
+
 GET_PROPERTIES = {
     'citation': {'type': 'string', 'description': 'Jedan citat, npr. čl. 21 st. 1 ZKP ili КЗ члан 246.'},
     'law': {'type': 'string', 'description': 'Tačan naziv, skraćenica (ZKP, KZ, ZOBS, ZPP) ili folder propisa.'},
@@ -220,6 +245,8 @@ def tool_list():
         tool['title'], tool['description'] = LABELS[name]
         tool['annotations']['title'] = tool['title']
         props = tool['inputSchema']['properties']
+        if name == 'search_law':
+            props['morphology'] = {'type': 'boolean', 'default': False, 'description': 'Opciona približna pretraga padežnih oblika kratke fraze (1–3 reči); ne kombinuje se sa regex ili case_sensitive.'}
         if name == 'resolve_citations':
             props['jurisdiction'] = deepcopy(upstream.SCOPE)
             props['max_results']['description'] = 'Najviše 20 citata članova (podrazumevano 10) i do 5 brojeva glasnika.'
@@ -244,7 +271,9 @@ def install():
     for name in HIDDEN:
         upstream.HANDLERS.pop(name, None)
     upstream.HANDLERS.update(get_provision=get_provision, resolve_citations=resolve_citations,
-                             find_provision=find_provision, search_changes=search_changes)
+                             find_provision=find_provision, search_changes=search_changes, search_law=search_law)
+    if 'morphology' not in upstream.PROPERTIES['search_law']:
+        upstream.PROPERTIES['search_law'].append('morphology')
     upstream.PROPERTIES['get_provision'] = list(GET_PROPERTIES)
     if 'jurisdiction' not in upstream.PROPERTIES['resolve_citations']:
         upstream.PROPERTIES['resolve_citations'].append('jurisdiction')
