@@ -12240,8 +12240,9 @@ INSTRUCTIONS = (
     'Dates are the dates each record gives a change: the day it took effect, or for a first version the day it was '
     'enacted or made. The text is copied from official publishers; for anything that matters, read the original. '
     'Cite the official text each answer names ("Official text:", cite.official_url, and the pincite "Cite as:"): the '
-    "publisher's page; also cite the commit_url and file_url returned by the tool as verifiable references to the "
-    "recorded version. Never invent a link. Say what the official page shows (this "
+    "publisher's page; also cite the most relevant returned GitHub reference: file_url for the full version, "
+    "file_diff_url for a specific provision's changes, or commit_url for the amending act and its metadata. "
+    "Never invent a link. Say what the official page shows (this "
     "provision on the date, the act as in force then, or today's text only). "
     'For Serbian law, answer in Serbian unless the user requests another language. Use law_details for original commit '
     'trailers when relevant, particularly Law, Published, In-force, Source and Consolidated. Use In-force for legal dates, not '

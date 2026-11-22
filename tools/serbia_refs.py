@@ -1,5 +1,6 @@
 """Add GitHub permalinks and official sources using upstream legal metadata."""
 from collections import OrderedDict
+from hashlib import sha256
 import os
 import re
 import tempfile
@@ -164,7 +165,7 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
         if tool == 'search_law':
             change_refs(data.get('related_changes', []))
     elif tool in ('provision_history', 'compare_dates', 'laws_between', 'search_changes'):
-        change_refs(data.get('changes', []), data.get('path'), files=tool == 'provision_history')
+        change_refs(data.get('changes', []), data.get('path'), files=tool in ('provision_history', 'compare_dates'))
     elif tool == 'who_wrote':
         dated_ref(data, data.get('date'), data.get('path'))
     elif tool == 'resolve_citations':
@@ -186,19 +187,25 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
         # Use upstream's subprocess wrapper so deadlines and cancellation apply.
         pairs = list(dict.fromkeys(pairs))
         if not pairs:
-            return set()
-        done = law.subprocess.run(['git', 'cat-file', '--batch-check=%(objecttype)'], cwd=cwd,
+            return {}
+        done = law.subprocess.run(['git', 'cat-file', '--batch-check=%(objecttype) %(objectname)'], cwd=cwd,
                                   input=''.join(f'{sha}:{rel}\n' for sha, rel in pairs),
                                   capture_output=True, encoding='utf-8')
         if done.returncode or len(done.stdout.splitlines()) != len(pairs):
-            return set()
-        return {pair for pair, kind in zip(pairs, done.stdout.splitlines()) if kind == 'blob'}
+            return {}
+        return {pair: info.split()[1] for pair, info in zip(pairs, done.stdout.splitlines()) if info.startswith('blob ')}
 
-    found = existing((sha, rel) for _, sha, rel in pending)
+    def version_objects(pairs):
+        # The first-parent comparison proves a text addition/change; merely existing at a
+        # commit (e.g. a correction naming an unchanged file) does not prove a GitHub diff.
+        return existing(pair for sha, rel in pairs for pair in (
+            [(sha, rel)] if tool == 'find_provision' else [(sha, rel), (sha + '^1', rel)]))
+
+    found = version_objects((sha, rel) for _, sha, rel in pending)
     # A provision may have moved: verify earlier names rather than guessing.
     alternatives = {(sha, rel): sorted(law._earlier_names(CORPUS, rel) - {rel})
                     for _, sha, rel in pending if (sha, rel) not in found}
-    earlier = existing((sha, old) for (sha, _), names in alternatives.items() for old in names)
+    earlier = version_objects((sha, old) for (sha, _), names in alternatives.items() for old in names)
     dated_results = tool == 'search_law' and parse_links is not None
     verified = []
     for row, sha, rel in pending:
@@ -207,6 +214,16 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
         if rel:
             row['file_url'] = f'{REPO}/blob/{sha}/{quote(rel, safe="/")}'
             links.append(row['file_url'])
+            if tool != 'find_provision':
+                commit_ref(row, sha)
+                objects = found if (sha, rel) in found else earlier
+                if objects.get((sha, rel)) != objects.get((sha + '^1', rel)):
+                    # GitHub's diff anchor is SHA-256 of the unescaped repository-relative path.
+                    row['file_diff_url'] = row['commit_url'] + '#diff-' + sha256(rel.encode('utf-8')).hexdigest()
+                    links.append(row['file_diff_url'])
+                    change = row.get('last_change')
+                    if change and change.get('commit') == sha:
+                        change['file_diff_url'] = row['file_diff_url']
             if dated_results:
                 verified.append((row, sha))
     if verified:
@@ -223,6 +240,8 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
             if changes[key] is not None:
                 row['last_change'] = dict(changes[key])
                 commit_ref(row['last_change'], sha)
+                if 'file_diff_url' in row:
+                    row['last_change']['file_diff_url'] = row['file_diff_url']
             else:
                 commit_ref(row, sha)
             if sha in source_data:

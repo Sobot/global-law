@@ -37,6 +37,8 @@ SQLite dodatno čuva kompaktan katalog akata: vrstu i putanju akta, naziv iz pos
 
 `search_law` (FTS i istorijska Git pretraga) uz `file_url` vraća `version_commit`, `last_change` (uključujući datum stupanja na snagu i objave) i `source_links`/`sources` iz odgovarajućeg commita, kada su dostupni. `Source` označava izvor izmene, a `Consolidated` verziju teksta. Poruke jedinstvenih commitova sa strane rezultata čitaju se grupno i keširaju po SHA; FTS indeks ostaje nepromenjen.
 
+Uz službeni izvor, datirani rezultati mogu vratiti tri GitHub reference: `file_url` (ceo tekst verzije), `commit_url` (akt o izmeni i traileri) i `file_diff_url` (direktno na diff člana u commitu, samo kada je sadržaj promenjen ili dodat). Asistent bira najrelevantniju referencu prema pitanju.
+
 Ručna obnova: **Actions → Serbia MCP CI and deployment → Run workflow → force_rebuild_index**. Na `main` obnavlja i indeks na test serveru, čak i ako je isti commit već deployovan. Lokalno: `python tools/serbia_fts.py --force`. Nova baza se objavljuje atomarno tek nakon izgradnje; neuspeh ostavlja prethodnu.
 
 ## Benchmark pretrage
