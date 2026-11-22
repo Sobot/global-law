@@ -20,6 +20,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: read
       packages: write
     outputs:
@@ -90,15 +91,14 @@ jobs:
           [[ "$key" =~ ^[0-9a-f]{20}-[0-9a-f]{40}$ ]]
           echo "key=$key" >> "$GITHUB_OUTPUT"
       # Restore and save separately so the index is kept even when later tests fail.
-      # Keys are per run so a forced rebuild can replace an index for the same content.
+      # One entry per index identity; a forced rebuild replaces it rather than adding another.
       - name: Restore Serbian FTS5 index
         id: fts-cache
         if: inputs.force_rebuild_index != true
         uses: actions/cache/restore@v4
         with:
           path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
-          key: serbia-fts-${{ steps.fts.outputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: serbia-fts-${{ steps.fts.outputs.key }}-
+          key: serbia-fts-${{ steps.fts.outputs.key }}
       - name: Build or reuse Serbian FTS5 index
         env:
           IMAGE: ${{ steps.image.outputs.name }}
@@ -114,12 +114,33 @@ jobs:
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
             "$IMAGE" python tools/serbia_fts.py "${args[@]}"
           test -f ".git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3"
+      - name: Drop replaced Serbian FTS5 index
+        if: inputs.force_rebuild_index == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEY: serbia-fts-${{ steps.fts.outputs.key }}
+        run: |
+          gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches?key=$KEY&ref=$GITHUB_REF" >/dev/null 2>&1 \
+            && echo "Deleted $KEY" || echo "No cached $KEY to replace"
       - name: Save Serbian FTS5 index
-        if: inputs.force_rebuild_index == true || steps.fts-cache.outputs.cache-matched-key == ''
+        if: inputs.force_rebuild_index == true || steps.fts-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
           path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
-          key: serbia-fts-${{ steps.fts.outputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: serbia-fts-${{ steps.fts.outputs.key }}
+      # Indexes for superseded code or law are never restored again on this ref.
+      - name: Prune superseded Serbian FTS5 indexes
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          KEY: serbia-fts-${{ steps.fts.outputs.key }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/actions/caches?ref=$GITHUB_REF&key=serbia-fts-&per_page=100" \
+            -q '.actions_caches[].key' | sort -u | while read -r old; do
+            if [[ "$old" != "$KEY" ]]; then
+              gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/caches?key=$old&ref=$GITHUB_REF" >/dev/null && echo "Pruned $old"
+            fi
+          done
       - name: Test exact runtime and corpus with persistent cache
         env:
           IMAGE: ${{ steps.image.outputs.name }}
