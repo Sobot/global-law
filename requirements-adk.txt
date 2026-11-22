@@ -1,0 +1,2 @@
+# The Google ADK agent in adk/global_law (Python 3.11 or newer); the MCP server itself needs only the standard library.
+google-adk[mcp]>=2.15,<3

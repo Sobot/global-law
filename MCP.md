@@ -13,6 +13,7 @@ and git, reads the repository and changes nothing.
     - [Cursor](#cursor)
     - [VS Code](#vs-code)
     - [Gemini CLI](#gemini-cli)
+    - [Google ADK (Gemini)](#google-adk-gemini)
     - [Grok Build](#grok-build)
     - [Cline](#cline)
     - [Claude (web and desktop)](#claude-web-and-desktop)
@@ -111,6 +112,21 @@ The extension (the server and the guidance from the skills):
 gemini extensions install https://github.com/lexifina/global-law-plugin
 ```
 
+#### Google ADK (Gemini)
+
+Where Gemini takes no custom MCP server, run it as an [Agent Development Kit](https://google.github.io/adk-docs/) agent.
+`adk/global_law` connects ADK's `McpToolset` to this server. It needs Python 3.11 or newer and a Gemini key
+(`GOOGLE_API_KEY`, or Vertex AI's variables):
+
+```sh
+pip install -r requirements-adk.txt
+GLOBAL_LAW_MCP_URL=https://global-law.lexifina.com/mcp adk web adk     # or: adk run adk/global_law
+```
+
+Without `GLOBAL_LAW_MCP_URL` it starts this clone's server over stdio instead (see [Set up](#set-up)).
+`GLOBAL_LAW_MODEL` picks the model (default `gemini-2.5-flash`). Only `GLOBAL_LAW_*` variables reach a local server, so
+the model's key stays with the agent. A `.env` beside the agent is ignored by git.
+
 #### Grok Build
 
 Install **global-law** from the plugin marketplace.
@@ -201,6 +217,7 @@ and `py` that is new enough:
 | Cursor | `.cursor/mcp.json` | Turn the server on under MCP settings if Cursor lists it as off |
 | VS Code (Copilot agent mode) | `.vscode/mcp.json` | Start it from the file's "Start" link or the MCP servers list |
 | Codex | `.codex/config.toml` | Trust the project; Codex reads project config only in trusted projects |
+| Google ADK (Gemini) | `adk/global_law/agent.py` | `pip install -r requirements-adk.txt`, then `adk web adk` ([details](#google-adk-gemini)) |
 
 `AGENTS.md` (and `CLAUDE.md`, which includes it) tells agents to answer questions about the law with these tools.
 To start the server by hand, `sh tools/mcp.sh` speaks MCP on stdin and stdout.
@@ -692,6 +709,7 @@ Where others are ahead:
 
 ```sh
 python -m unittest tests.test_mcp -v
+python -m unittest tests.test_adk -v    # the ADK agent; skips without google-adk
 ```
 
 The tests speak to the server the way a client does: the handshake, every tool, errors, resources, and the
