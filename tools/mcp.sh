@@ -6,7 +6,7 @@
 # instead of the client showing only "Connection closed".
 # The project MCP configs (.mcp.json, .cursor/mcp.json, .codex/config.toml) start it through git,
 # which every clone has and which runs it from the top of the clone with a POSIX shell, Git for Windows included.
-# .vscode/mcp.json connects to the remote Serbian test server instead.
+# .vscode/mcp.json starts the same generic local server.
 #   sh tools/mcp.sh
 cd "$(dirname "$0")/.." || exit 1
 why=''

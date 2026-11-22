@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
@@ -113,19 +114,12 @@ class Server:
 
 
 class GenericLauncher(unittest.TestCase):
-    def test_generic_handlers_do_not_install_the_serbian_profile(self):
-        sys.path.insert(0, str(ROOT / 'tools'))
-        import mcp_server as engine
-
-        base_handler = next(fn for name, _, _, _, fn in engine.TOOLS if name == 'phrase_history')
-        self.assertIs(engine.HANDLERS['phrase_history'], base_handler)
-
-    def test_stdio_launcher_uses_generic_engine_even_with_serbia_environment(self):
+    def test_stdio_launcher_uses_generic_engine(self):
         request = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
                    'params': {'protocolVersion': '2025-06-18', 'capabilities': {}}}
         result = subprocess.run(['sh', str(ROOT / 'tools/mcp.sh')], cwd=ROOT, input=json.dumps(request) + '\n',
                                 text=True, capture_output=True, timeout=30,
-                                env={**os.environ, 'SERBIA_LAW_MCP': '1', 'GLOBAL_LAW_JURISDICTIONS': 'serbia'})
+                                env={**os.environ, 'GLOBAL_LAW_JURISDICTIONS': 'serbia'})
         self.assertEqual(result.returncode, 0, result.stderr)
         reply = json.loads(result.stdout.splitlines()[0])
         self.assertEqual(reply['result']['serverInfo']['name'], 'global-law')
@@ -159,6 +153,51 @@ class GenericLauncher(unittest.TestCase):
         self.assertEqual(seen, {'jurisdiction': 'example'})
         self.assertTrue(reply['structuredContent']['extension_applied'])
         self.assertEqual(reply['content'][0]['text'], 'base result enriched')
+
+    def test_data_root_can_be_separate_from_engine_code(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tools = Path(temporary) / 'engine' / 'tools'
+            tools.mkdir(parents=True)
+            for name in ('law.py', 'mcp_server.py', 'skill_resources.py', 'usc_cite.py'):
+                shutil.copyfile(ROOT / 'tools' / name, tools / name)
+            code = (
+                'import json, mcp_server; '
+                'print(json.dumps({"root": str(mcp_server.ROOT), "engine": mcp_server.__file__, '
+                '"law": mcp_server.law.__file__, "corpora": [c["path"] for c in mcp_server.law._whole_manifest()["corpora"]], '
+                '"gitlink": mcp_server.law.git("ls-tree", "HEAD", "--", "serbia/national/acts").strip()}))'
+            )
+            result = subprocess.run([sys.executable, '-c', code], cwd=temporary, text=True, capture_output=True,
+                                    env={**os.environ, 'GLOBAL_LAW_ROOT': str(ROOT), 'PYTHONPATH': str(tools)})
+            default_env = {**os.environ, 'PYTHONPATH': str(tools)}
+            default_env.pop('GLOBAL_LAW_ROOT', None)
+            default = subprocess.run([sys.executable, '-c', 'import mcp_server; print(mcp_server.ROOT)'],
+                                     cwd=ROOT, text=True, capture_output=True, env=default_env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data['root'], str(ROOT.resolve()))
+        self.assertEqual(Path(data['engine']).parent, tools)
+        self.assertEqual(Path(data['law']).parent, tools)
+        self.assertIn('serbia/national/acts', data['corpora'])
+        self.assertRegex(data['gitlink'], r'^160000 commit [0-9a-f]{40}\tserbia/national/acts$')
+        self.assertEqual(default.returncode, 0, default.stderr)
+        self.assertEqual(default.stdout.strip(), str(tools.parent.resolve()))
+
+    def test_invalid_data_root_fails_clearly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            no_git = Path(temporary) / 'not-a-checkout'
+            no_git.mkdir()
+            (no_git / 'manifest.json').write_text('{}', encoding='utf-8')
+            invalid_roots = (
+                ('relative/path', 'GLOBAL_LAW_ROOT must be an absolute path'),
+                (temporary, 'GLOBAL_LAW_ROOT must contain manifest.json'),
+                (str(no_git), 'GLOBAL_LAW_ROOT must be a Git checkout'),
+            )
+            for value, message in invalid_roots:
+                result = subprocess.run(
+                    [sys.executable, '-c', 'import law'], cwd=ROOT, text=True, capture_output=True,
+                    env={**os.environ, 'GLOBAL_LAW_ROOT': value, 'PYTHONPATH': str(ROOT / 'tools')})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
 
 
 class McpServer(unittest.TestCase):
@@ -1208,7 +1247,7 @@ class ScopeRules(unittest.TestCase):
 class Launching(unittest.TestCase):
     """Every client's project config starts the server from any folder of the clone, on any platform."""
 
-    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.codex/config.toml')
+    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', '.codex/config.toml')
 
     def entry(self, config: str) -> dict:
         text = (ROOT / config).read_text(encoding='utf-8')
@@ -1229,11 +1268,6 @@ class Launching(unittest.TestCase):
                                       capture_output=True, timeout=120)
                 reply = json.loads(proc.stdout.decode('utf-8').splitlines()[0])
                 self.assertEqual(reply['result']['serverInfo']['name'], 'global-law', proc.stderr[-300:])
-
-    def test_vscode_connects_to_the_serbian_test_server(self):
-        servers = json.loads((ROOT / '.vscode/mcp.json').read_text(encoding='utf-8'))['servers']
-        plugin = json.loads((ROOT / 'plugins/sr/mcp.json').read_text(encoding='utf-8'))['mcpServers']['zakon']
-        self.assertEqual(servers, {'zakon': {'type': 'http', 'url': plugin['url']}})
 
     def test_claude_code_approves_the_server(self):
         settings = json.loads((ROOT / '.claude/settings.json').read_text(encoding='utf-8'))
@@ -4971,23 +5005,25 @@ class SerbianInLatinLetters(unittest.TestCase):
         self.assertEqual(m.regex_fragments('годишњ(и|ег) одмор'), [['годишњ', 'одмор']])
         self.assertIsNone(m.regex_fragments('第九条'))
 
-    def test_cyrillic_first_then_as_typed(self):
+    def test_public_search_finds_serbian_corpus_from_latin_query(self):
         from unittest import mock
         m = self.m
         asked = []
 
         def handler(args):
             asked.append(args['query'])
-            held = {'годишњи одмор': ['a.md'], 'annual leave': ['b.md']}.get(args['query'], [])
+            held = {'годишњи одмор': ['serbia/national/acts/zakon/2005/24-3/clan-073.md'],
+                    'annual leave': ['other/annual-leave.md']}.get(args['query'], [])
             return f'{len(held)} found', {'results': held}
         run = m.in_cyrillic('search_law', handler)
         with mock.patch.object(m, 'cyrillic_first', lambda args: True):
             text, data = run({'query': 'godišnji odmor', 'jurisdiction': 'serbia'})
-            self.assertEqual((data['results'], data['query_as'], asked), (['a.md'], 'годишњи одмор', ['годишњи одмор']))
+            self.assertEqual((data['results'], data['query_as'], asked),
+                             (['serbia/national/acts/zakon/2005/24-3/clan-073.md'], 'годишњи одмор', ['годишњи одмор']))
             self.assertTrue(text.startswith("Searched as 'годишњи одмор'") and data['script_note'] in text)
             del asked[:]  # words that are not Serbian: asked in Cyrillic, nothing found, then as typed
             text, data = run({'query': 'annual leave'})
-            self.assertEqual((data, asked), ({'results': ['b.md']}, ['аннуал леаве', 'annual leave']))
+            self.assertEqual((data, asked), ({'results': ['other/annual-leave.md']}, ['аннуал леаве', 'annual leave']))
             del asked[:]  # Cyrillic, a pattern, a letter Serbian does not use: as typed
             for args in ({'query': 'годишњи одмор'}, {'query': 'godišnji', 'regex': True}, {'query': 'query'}):
                 run(dict(args))
