@@ -342,10 +342,11 @@ class CaseLaw(unittest.TestCase):
         self.assertIn('2022-03-03', lj['text'])  # its latest decision, which the timeline of law no longer holds
 
     def test_readme_resource_describes_case_law(self):
-        """The README an assistant reads (global-law://README.md) says what case law is and how to add and read it."""
+        """The fork README points readers to the global interface guide for case law."""
         text = (ROOT / 'README.md').read_text(encoding='utf-8')
-        self.assertIn('## Case law', text)
-        for words in ('switzerland/bund/caselaw', 'countries.py add switzerland/caselaw', 'check_precedent', 'Kind: court'):
+        self.assertIn('](MCP.md)', text)
+        text = (ROOT / 'MCP.md').read_text(encoding='utf-8').split('### Case law', 1)[1]
+        for words in ('switzerland/bund/caselaw', 'switzerland/caselaw', 'countries.py add', 'check_precedent', 'Kind: court'):
             self.assertIn(words, text)
 
     def test_charts_leave_case_law_out(self):

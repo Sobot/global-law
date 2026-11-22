@@ -2632,7 +2632,7 @@ def _country_names() -> dict[str, str]:
             folder = c['path'].split('/')[0]
             out.setdefault(folder, folder)
             code = str(c.get('code') or '').split('-')[0].lower()
-            if code:
+            if re.fullmatch('[a-z]{2}', code):
                 out.setdefault(code, folder)
         for alias, code in COUNTRY_ALIASES.items():
             if code in out:
