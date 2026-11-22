@@ -2,10 +2,13 @@
 from copy import deepcopy
 from functools import lru_cache
 import re
+import subprocess
+import sqlite3
 
 import mcp_server as upstream
 import serbia_refs
 import serbia_stemmer
+import serbia_fts
 from serbia_citations import ALIASES, GAZETTE, article_number, gazettes, normalize, parse, title_forms
 
 CORPUS = serbia_refs.CORPUS
@@ -208,6 +211,23 @@ def search_law(args):
     enabled = args.pop('morphology', False)
     if type(enabled) is not bool:
         raise upstream.UserError('morphology mora biti true ili false.')
+    # The upstream index hook serves whole-corpus, current, plain searches.
+    # Preserve all original dated, scoped and regex search behavior.
+    if not args.get('regex') and not args.get('case_sensitive') and upstream.date_arg(args.get('date')) == upstream.law.day('today'):
+        scope = upstream.scope_arg(args)
+        query = upstream.text_arg(args, 'query')
+        if upstream.scoped(CORPUS, scope) == '' and (not enabled or 1 <= len(query.split()) <= 3):
+            try:
+                prepared = serbia_fts.prepare(query, enabled)
+            except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, sqlite3.Error):
+                prepared = None
+            if prepared is not None:
+                text, data = upstream.t_search_law({**args, 'query': prepared})
+                data = {**data, 'search_backend': 'sqlite_fts5', 'morphology_applied': enabled}
+                if enabled:
+                    note = 'Približna pretraga padežnih oblika; proveri relevantnost izvornog teksta.'
+                    return note + '\n' + text, {**data, 'morphology_note': note, 'morphology_query': query}
+                return text, data
     if not enabled:
         return _BASE['search_law'](args)
     if args.get('regex') or args.get('case_sensitive'):
@@ -261,6 +281,7 @@ def tool_list():
 def install():
     """Install only in the Serbia entry points, never in upstream's global server."""
     upstream.INSTRUCTIONS = INSTRUCTIONS
+    upstream.search_index = serbia_fts.Index()
     upstream.tool_list = tool_list
     upstream.PROMPTS = {
         'provision_on_a_date': ('Član na datum', 'Proveri tekst važeći na određeni datum.',

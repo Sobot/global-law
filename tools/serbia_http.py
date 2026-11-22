@@ -1,5 +1,8 @@
 """Streamable HTTP adapter for the read-only Serbia Law MCP server."""
 import os
+import threading
+import logging
+import time
 from contextlib import asynccontextmanager
 
 os.environ['SERBIA_LAW_MCP'] = '1'
@@ -17,6 +20,7 @@ from starlette.routing import Route
 
 import mcp_server as upstream
 import serbia_profile
+import serbia_fts
 
 serbia_profile.install()
 
@@ -68,6 +72,15 @@ async def health(request):
 @asynccontextmanager
 async def lifespan(app):
     upstream.start_warming()
+    def build_index():
+        while True:
+            try:
+                serbia_fts.build()
+            except Exception:
+                logging.getLogger(__name__).exception('FTS5 index unavailable; using git search')
+            # Future-effective provisions can change today's tree without a new Git pin.
+            time.sleep(3600)
+    threading.Thread(target=build_index, name='serbia-fts-build', daemon=True).start()
     async with manager.run():
         yield
 

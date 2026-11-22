@@ -1,4 +1,5 @@
 import sys
+import os
 import unittest
 from pathlib import Path
 
@@ -55,6 +56,20 @@ class SerbiaProfileTest(unittest.TestCase):
                                            'jurisdiction': PATH, 'date': '2019-05-29'})
         self.assertTrue(result['morphology_applied'])
         self.assertTrue(any(r['path'] == PATH and r.get('file_url') for r in result['results']), result)
+
+    @unittest.skipUnless(os.environ.get('SERBIA_FTS_TEST') == '1', 'requires prebuilt FTS index')
+    def test_current_fts_search(self):
+        forms = ('годишњи одмор', 'godišnji odmor', 'godisnji odmor')
+        results = [self.call('search_law', {'query': q, 'max_results': 5}) for q in forms]
+        self.assertTrue(results[0]['results'])
+        for got in results:
+            self.assertEqual(got.get('search_backend'), 'sqlite_fts5')
+            self.assertEqual(got['results'], results[0]['results'])
+            self.assertTrue(all(r.get('file_url') for r in got['results']))
+        result = self.call('search_law', {'query': 'godisnjeg odmora', 'morphology': True, 'max_results': 5})
+        self.assertEqual(result.get('search_backend'), 'sqlite_fts5')
+        self.assertTrue(result['morphology_applied'])
+        self.assertTrue(result['results'])
 
     def test_exact_folder_and_unresolved(self):
         got = self.call('get_provision', {'law': FOLDER, 'article': 21, 'date': '2019-05-29', 'include_text': False})
