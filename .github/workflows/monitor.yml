@@ -1,10 +1,8 @@
-# The public monitor: every hour, from GitHub rather than the machine that publishes, check that updates are still
+# The public monitor (run manually; no schedule): from GitHub rather than the machine that publishes, check that updates are still
 # being published (data/status.json refreshed within 2 hours, updates running) and that freshness is being recomputed
 # (data/freshness.json no older than a day). A failed run notifies the maintainers and turns the README badge red.
 name: monitor
 on:
-  schedule:
-    - cron: '17 * * * *'
   workflow_dispatch:
 permissions:
   contents: read
