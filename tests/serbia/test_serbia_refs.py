@@ -1,5 +1,8 @@
 import sys
+import tempfile
 import unittest
+from collections import OrderedDict
+from unittest.mock import patch
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
@@ -54,8 +57,9 @@ class SerbiaReferencesTest(unittest.TestCase):
                 self.assert_no_extra_trailers(value)
 
     def test_dated_search_and_list(self):
-        for date in ('2019-05-28', '2019-05-29'):
-            expected = self.call('read_law', {'path': PATH, 'date': date})['file_url']
+        for date in ('2019-05-28', '2019-05-29', 'today'):
+            read = self.call('read_law', {'path': PATH, 'date': date})
+            expected = read['file_url']
             data = self.call('list_provisions', {'path': PATH.rsplit('/', 1)[0],
                                                 'date': date, 'by_folder': False})
             row = next(r for r in data['provisions'] if r['path'] == PATH)
@@ -65,7 +69,30 @@ class SerbiaReferencesTest(unittest.TestCase):
                                                'jurisdiction': PATH.rsplit('/', 1)[0]})
             row = next(r for r in results['results'] if r['path'] == PATH)
             self.assertEqual(row['file_url'], expected)
+            self.assertEqual(row['version_commit'], read['version_commit'])
+            self.assertEqual(row['last_change']['in_force'], read['last_change']['in_force'])
+            self.assertEqual(row['last_change']['published'], read['last_change']['published'])
+            self.assertEqual(row['last_change']['commit_url'], read['last_change']['commit_url'])
+            self.assertEqual(row['sources'], read['sources'])
+            if date == '2019-05-29':
+                self.assertEqual({link['key'] for link in row['source_links']}, {'Source', 'Consolidated'})
             self.assert_no_extra_trailers(results)
+
+    def test_source_batch_and_cache(self):
+        sha1, sha2, missing = 'a' * 40, 'b' * 40, 'c' * 40
+        body = b'tree ignored\n\nTitle\n\nSource: https://example.org/source\nConsolidated: https://example.org/version\n'
+        with tempfile.TemporaryDirectory() as temp, patch.object(serbia_refs, '_source_cache', OrderedDict()), \
+                patch.object(serbia_refs.law, '_store', return_value=Path(temp)), \
+                patch.object(serbia_refs.law, '_cat_batch', return_value=[(b'commit', body), (b'commit', body), (b'missing', None)]) as batch:
+            result = serbia_refs.sources_many([sha1, sha1, sha2, missing], mcp.links_from_body)
+            self.assertEqual(batch.call_args.args[1], [sha1, sha2, missing])
+            self.assertEqual(result[sha1], result[sha2])
+            self.assertNotIn(missing, result)
+            self.assertEqual(serbia_refs.sources_many([sha1, sha2], mcp.links_from_body), result)
+            batch.assert_called_once()
+            serbia_refs._source_cache.clear()
+            self.assertEqual(serbia_refs.sources_many([sha1, sha2], mcp.links_from_body), result)
+            batch.assert_called_once()  # disk cache is shared with upstream
 
     def test_compare_dates_links_changes(self):
         data = self.call('compare_dates', {'path': PATH, 'date_a': '2019-05-28', 'date_b': '2019-05-29'})

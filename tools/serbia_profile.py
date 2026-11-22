@@ -17,7 +17,10 @@ INSTRUCTIONS = (
     'Upiti mogu biti na ćirilici, latinici ili bez dijakritika. Za konkretan član koristi get_provision '
     '(npr. čl. 21 st. 1 ZKP); za više citata resolve_citations; za tematsku pretragu search_law. '
     'Navedi datum primene propisa (YYYY-MM-DD), ne datum Git commita. Citiraj naziv propisa, član, '
-    'provereni stav/tačku i izvore iz cite, file_url i last_change. Broj glasnika sam po sebi ne određuje '
+    'provereni stav/tačku i službene izvore: prvenstveno cite.official_url, zatim source_links/sources iz rezultata pretrage. '
+    'Navedi šta službeni link prikazuje: Consolidated je verzija teksta, Source je izvor evidentirane izmene i ne mora prikazivati važeći tekst. '
+    'Uz službeni izvor navedi file_url kao permalink konkretne verzije i commit_url iz last_change kao link na izmenu. '
+    'Ako službeni izvor nedostaje, reci to; ne izmišljaj linkove. Broj glasnika sam po sebi ne određuje '
     'verziju člana na datum. Ne tvrdi da propis važi van pokrivenosti korpusa; proveri caveats i freshness. '
     'serbia_metadata u pretrazi je pomoćni katalog: publication_key/issue/item iz putanje nisu potvrda službenog glasnika, '
     'a heading_context nije nužno naslov člana. Za citiranje koristi proverene izvore. '
@@ -32,7 +35,7 @@ LABELS = {
     'compare_dates': ('Uporedi verzije', 'Uporedi tekst člana na dva datuma i izmene između njih.'),
     'provision_history': ('Istorija člana', 'Sve evidentirane izmene člana, datumi objave i stupanja na snagu.'),
     'laws_between': ('Propisi u periodu', 'Izmene propisa koje su stupile na snagu u datom periodu, uključujući oba datuma.'),
-    'search_law': ('Pretraži tekst propisa', 'Pretraži tekst propisa Srbije na datum, npr. godišnji odmor, naknada štete. Podržava oba pisma. Za različite padeže kratke fraze koristi morphology=true.'),
+    'search_law': ('Pretraži tekst propisa', 'Pretraži tekst propisa Srbije na datum, npr. godišnji odmor, naknada štete. Vraća službene izvore verzije, kada postoje, i GitHub permalink. Podržava oba pisma. Za različite padeže kratke fraze koristi morphology=true.'),
     'changes_between': ('Izmene između datuma', 'Pronađi odredbe čiji se tekst razlikuje na dva datuma.'),
     'list_provisions': ('Pregled članova propisa', 'Prikaži članove ili pojedinačne propise u folderu na određeni datum.'),
     'search_changes': ('Pretraži izmene i glasnik', 'Pretraži evidenciju izmena, naziv propisa ili broj glasnika, npr. Sl. glasnik RS, br. 35/2019.'),
