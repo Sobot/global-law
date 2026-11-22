@@ -21,8 +21,10 @@ from starlette.routing import Route
 import mcp_server as upstream
 import serbia_profile
 import serbia_fts
+import serbia_timing
 
 serbia_profile.install()
+serbia_timing.install(upstream, serbia_fts, upstream.serbia_refs)
 
 server = Server('serbia-law-mcp', version='0.1.0', instructions=upstream.INSTRUCTIONS)
 limiter = anyio.CapacityLimiter(1)  # upstream shares caches and processes calls in order
@@ -50,7 +52,7 @@ async def list_tools():
 async def call_tool(name, arguments):
     request = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
                'params': {'name': name, 'arguments': arguments}}
-    reply = await anyio.to_thread.run_sync(upstream.handle, request, limiter=limiter)
+    reply = await anyio.to_thread.run_sync(serbia_timing.run, upstream.handle, request, time.perf_counter(), limiter=limiter)
     if 'result' in reply:
         return types.CallToolResult.model_validate(reply['result'])
     return types.CallToolResult(isError=True, content=[types.TextContent(type='text', text=reply['error']['message'])])
