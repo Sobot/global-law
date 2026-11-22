@@ -113,6 +113,12 @@ class SerbiaReferencesTest(unittest.TestCase):
                            'clientInfo': {'name': 'test', 'version': '1'}}})
             self.assertEqual(result.status_code, 200)
             self.assertEqual(result.json()['result']['serverInfo']['name'], 'serbia-law-mcp')
+            discovery = client.post('/mcp', headers=headers, json={
+                'jsonrpc': '2.0', 'id': 3, 'method': 'tools/list', 'params': {}})
+            self.assertEqual(discovery.status_code, 200)
+            tools = {t['name'] for t in discovery.json()['result']['tools']}
+            self.assertIn('get_provision', tools)
+            self.assertNotIn('check_precedent', tools)
             result = client.post('/mcp', headers=headers, json={
                 'jsonrpc': '2.0', 'id': 2, 'method': 'tools/call',
                 'params': {'name': 'law_details', 'arguments': {'commit': SHA, 'include_diffs': False}}})
