@@ -30,7 +30,8 @@ class StemmerTest(unittest.TestCase):
 
     def test_profile_opt_in(self):
         with patch.dict(profile._BASE, {'search_law': lambda args: ('law', {'args': args})}), \
-             patch.object(mcp, 'scope_arg', return_value='serbia'):
+             patch.object(mcp, 'scope_arg', return_value='serbia'), \
+             patch.object(profile.serbia_fts, 'prepare', return_value=None):
             _, literal = profile.search_law({'query': 'naknada stete'})
             self.assertEqual(literal['args'], {'query': 'naknada stete'})
             _, expanded = profile.search_law({'query': 'naknada stete', 'morphology': True, 'date': '2019-05-29'})
