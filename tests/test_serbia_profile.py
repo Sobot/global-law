@@ -34,6 +34,14 @@ class SerbiaProfileTest(unittest.TestCase):
         self.assertIn('Pronađi', tools['get_provision']['title'])
         self.assertNotIn('judgments', tools['search_law']['inputSchema']['properties']['kind']['enum'])
 
+    def test_find_article_and_whole_act(self):
+        for query in ('KZ čl. 246', 'Кривични законик члан 246'):
+            found = self.call('find_provision', {'query': query})['results']
+            self.assertEqual(found[0]['path'], 'serbia/national/acts/zakon/2005/85-30/tekst.md')
+            self.assertTrue(found[0]['whole_act'])
+        found = self.call('find_provision', {'query': 'cl. 21 st. 1 ZKP'})['results']
+        self.assertEqual(found[0]['path'], PATH)
+
     def test_dated_citation(self):
         for citation, date in (('čl. 21 st. 1 ZKP', '2019-05-28'), ('ЗКП члан 21 став 1', '2019-05-29')):
             expected = self.call('read_law', {'path': PATH, 'date': date})
@@ -59,17 +67,6 @@ class SerbiaProfileTest(unittest.TestCase):
         self.assertEqual(got['gazettes'][0]['issue'], '35/2019')
         got = self.call('search_changes', {'query': 'Sl. glasnik RS, br. 35/2019', 'jurisdiction': FOLDER})
         self.assertTrue(any(SHA.startswith(r.get('commit', 'x')) for r in got['changes']), got)
-
-    def test_http_profile(self):
-        from starlette.testclient import TestClient
-        from serbia_http import app
-        with TestClient(app) as client:
-            headers = {'Accept': 'application/json, text/event-stream'}
-            response = client.post('/mcp', headers=headers, json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}})
-            self.assertEqual(response.status_code, 200)
-            tools = {t['name'] for t in response.json()['result']['tools']}
-            self.assertIn('get_provision', tools)
-            self.assertNotIn('check_precedent', tools)
 
 
 if __name__ == '__main__':

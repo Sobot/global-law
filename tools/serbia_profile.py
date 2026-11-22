@@ -182,13 +182,16 @@ def find_provision(args):
         key = normalize(query).strip(' .')
         if key in ALIASES:
             args = {**args, 'query': ALIASES[key]}
-        elif not args.get('offset') and re.search(r'\d', query):
-            sha, index = catalog()
+        elif re.search(r'\d', query):
+            _, index = catalog()
             refs = list(parse(query, index))
             if len(refs) == 1 and refs[0].get('law'):
-                row = lookup(refs[0], upstream.date_arg(None), {**args, 'include_text': False}, sha, index)
-                results = ([{'path': row['path'], 'heading': row['law_title'], 'score': 100}] if row.get('path') else [])
-                return row['summary'], {'summary': row['summary'], 'results': results, 'status': row['status'], 'candidates': row.get('candidates', [])}
+                ref = refs[0]
+                titles = set(index.get(normalized_name(ref['law']), {}).values())
+                if len(titles) == 1:
+                    title, = titles
+                    # Upstream finds the article or returns the act when it is held as one text.
+                    args = {**args, 'query': f"{title} члан {ref['article']}"}
     return _BASE['find_provision'](args)
 
 
