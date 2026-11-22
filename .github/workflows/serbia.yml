@@ -78,6 +78,7 @@ jobs:
           cache="$PWD/.git/global-law-cache"
           sudo install -d -o 10001 -g 10001 -m 0755 "$cache"
           docker run --rm \
+            -e SERBIA_LAW_GREP_THREADS=2 -e SERBIA_LAW_WARM_PACKS=1 \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
             "$IMAGE" python -m unittest discover -s tests/serbia -v
