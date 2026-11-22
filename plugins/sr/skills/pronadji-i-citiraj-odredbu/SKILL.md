@@ -1,9 +1,9 @@
 ---
 name: pronadji-i-citiraj-odredbu
-description: Koristi kada korisnik traži tačan član, stav ili tačku srpskog propisa, proveru navoda ili direktan link do citiranog teksta.
+description: Користи када корисник тражи тачан члан, став или тачку српског прописа, проверу навода или директан линк до цитираног текста.
 ---
 
-1. Pomoću `find_provision` pronađi propis po nazivu i broju člana. Proveri puni naziv akta. Ako upit bez dijakritika ili skraćenica ne daje rezultat, pokušaj pun naziv ćirilicom ili pretraži karakteristične reči pomoću `search_law`.
-2. Otvori pronađenu putanju pomoću `read_law` za traženi datum ili za danas. U samom tekstu proveri član, stav i tačku. Ako je odgovor skraćen, učitaj nastavak. Razlikuj pravno numerisane jedinice od redova Markdown fajla.
-3. Navedi pun naziv propisa, proverene jedinice i datum verzije. Prenesi relevantnu rečenicu u izvornom pismu, pa odvojeno iznesi tumačenje ako je traženo.
-4. Prvenstveno citiraj službeni izvor (`cite.official_url` ili `source_links`/`sources`). Razlikuj `Consolidated` (verzija teksta) od `Source` (izvor evidentirane izmene). Uz njega odaberi najrelevantniji GitHub link: `file_url` za tekst, `file_diff_url` za izmenu konkretnog člana, `commit_url` za akt o izmeni i njegove metapodatke. Ako službeni izvor ili tražena tačka nedostaje, reci to. Linkove preuzimaj iz rezultata alata.
+1. Помоћу `find_provision` пронађи пропис по називу и броју члана. Провери пуни назив акта. Ако упит без дијакритика или скраћеница не даје резултат, покушај пун назив ћирилицом или претражи карактеристичне речи помоћу `search_law`.
+2. Отвори пронађену путању помоћу `read_law` за тражени датум или за данас. У самом тексту провери члан, став и тачку. Ако је одговор скраћен, учитај наставак. Разликуј правно нумерисане јединице од редова Markdown фајла.
+3. Наведи пун назив прописа, проверене јединице и датум верзије. Пренеси релевантну реченицу у изворном писму, па одвојено изнеси тумачење ако је тражено.
+4. Првенствено цитирај службени извор (`cite.official_url` или `source_links`/`sources`). Разликуј `Consolidated` (верзија текста) од `Source` (извор евидентиране измене). Уз њега одабери најрелевантнији GitHub линк: `file_url` за текст, `file_diff_url` за измену конкретног члана, `commit_url` за акт о измени и његове метаподатке. Ако службени извор или тражена тачка недостаје, реци то. Линкове преузимај из резултата алата.

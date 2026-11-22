@@ -1,9 +1,9 @@
 ---
 name: propis-na-datum
-description: Utvrdi koji je propis ili tekst odredbe važio ili se primenjivao na određeni datum u Srbiji. Koristi i kada korisnik navodi današnji član za stariji događaj.
+description: Утврди који је пропис или текст одредбе важио или се примењивао на одређени датум у Србији. Користи и када корисник наводи данашњи члан за старији догађај.
 ---
 
-1. Izdvoji vreme događaja i pravno pitanje. Ako je navedena samo godina, proveri da li se relevantni tekst menjao tokom te godine. Ako jeste, prikaži periode ili zatraži datum događaja.
-2. Identifikuj akt koji je tada uređivao materiju. Pomoću pretrage na datum proveri istorijski naziv, prethodni propis i, kada je relevantno, savezni propis. Današnji broj člana koristi kao trag. Kod promene numeracije proveri vezu kroz sadržaj odredbe ili akt o izmeni.
-3. Pozovi `read_law` sa potvrđenom putanjom i datumom u obliku YYYY-MM-DD. Pomoću `provision_history` i po potrebi `law_details` proveri granice verzije, službenu referencu i datum stupanja na snagu. Proveri početak primene i prelazne odredbe ako odgovor zavisi od konkretnog postupka. Datum Git komita sam po sebi ne dokazuje nijedan pravni datum.
-4. Navedi datum ili interval, tadašnji naziv i broj člana, relevantan tekst, službeni izvor (`cite.official_url` ili `source_links`) i najrelevantniji vraćeni GitHub link: `file_url` za istorijski tekst, `file_diff_url` za konkretnu izmenu, `commit_url` za akt o izmeni i njegove datume. Razlikuj službeni tekst verzije od izvora izmene. Ako korpus počinje kasnije ili nedostaje prethodni akt, navedi granicu podataka. Iz praznog rezultata ne izvodi zaključak da pravilo tada nije postojalo.
+1. Издвоји време догађаја и правно питање. Ако је наведена само година, провери да ли се релевантни текст мењао током те године. Ако јесте, прикажи периоде или затражи датум догађаја.
+2. Идентификуј акт који је тада уређивао материју. Помоћу претраге на датум провери историјски назив, претходни пропис и, када је релевантно, савезни пропис. Данашњи број члана користи као траг. Код промене нумерације провери везу кроз садржај одредбе или акт о измени.
+3. Позови `read_law` са потврђеном путањом и датумом у облику `YYYY-MM-DD`. Помоћу `provision_history` и по потреби `law_details` провери границе верзије, службену референцу и датум ступања на снагу. Провери почетак примене и прелазне одредбе ако одговор зависи од конкретног поступка. Датум Git комита сам по себи не доказује ниједан правни датум.
+4. Наведи датум или интервал, тадашњи назив и број члана, релевантан текст, службени извор (`cite.official_url` или `source_links`) и најрелевантнији враћени GitHub линк: `file_url` за историјски текст, `file_diff_url` за конкретну измену, `commit_url` за акт о измени и његове датуме. Разликуј службени текст верзије од извора измене. Ако корпус почиње касније или недостаје претходни акт, наведи границу података. Из празног резултата не изводи закључак да правило тада није постојало.

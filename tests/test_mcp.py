@@ -1158,7 +1158,7 @@ class ScopeRules(unittest.TestCase):
 class Launching(unittest.TestCase):
     """Every client's project config starts the server from any folder of the clone, on any platform."""
 
-    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', '.codex/config.toml')
+    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.codex/config.toml')
 
     def entry(self, config: str) -> dict:
         text = (ROOT / config).read_text(encoding='utf-8')
@@ -1179,6 +1179,11 @@ class Launching(unittest.TestCase):
                                       capture_output=True, timeout=120)
                 reply = json.loads(proc.stdout.decode('utf-8').splitlines()[0])
                 self.assertEqual(reply['result']['serverInfo']['name'], 'serbia-law-mcp', proc.stderr[-300:])
+
+    def test_vscode_connects_to_the_serbian_test_server(self):
+        servers = json.loads((ROOT / '.vscode/mcp.json').read_text(encoding='utf-8'))['servers']
+        plugin = json.loads((ROOT / 'plugins/sr/mcp.json').read_text(encoding='utf-8'))['mcpServers']['zakon']
+        self.assertEqual(servers, {'zakon': {'type': 'http', 'url': plugin['url']}})
 
     def test_claude_code_approves_the_server(self):
         settings = json.loads((ROOT / '.claude/settings.json').read_text(encoding='utf-8'))
