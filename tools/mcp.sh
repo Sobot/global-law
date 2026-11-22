@@ -4,8 +4,9 @@
 # skips), else a versioned python3.N. Each candidate first compiles the server and loads its citation patterns, so a
 # Python that cannot run this version of the server is passed over, and when none can, the reason is printed here
 # instead of the client showing only "Connection closed".
-# The project MCP configs (.mcp.json, .cursor/mcp.json, .vscode/mcp.json, .codex/config.toml) start it through git,
+# The project MCP configs (.mcp.json, .cursor/mcp.json, .codex/config.toml) start it through git,
 # which every clone has and which runs it from the top of the clone with a POSIX shell, Git for Windows included.
+# .vscode/mcp.json connects to the remote Serbian test server instead.
 #   sh tools/mcp.sh
 cd "$(dirname "$0")/.." || exit 1
 export SERBIA_LAW_MCP=1 GLOBAL_LAW_JURISDICTIONS=serbia

@@ -28,3 +28,7 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Pins move only forward
         run: python tools/verify.py
+      - name: Serbian translations follow their English originals
+        if: matrix.python == '3.13'
+        continue-on-error: true  # a stale translation is a reminder, not a failure
+        run: python tools/check_translations.py --diff
