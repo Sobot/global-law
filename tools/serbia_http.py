@@ -27,7 +27,8 @@ serbia_profile.install()
 serbia_timing.install(upstream, serbia_fts, upstream.serbia_refs)
 
 server = Server('serbia-law-mcp', version='0.1.0', instructions=upstream.INSTRUCTIONS)
-limiter = anyio.CapacityLimiter(1)  # upstream shares caches and processes calls in order
+# Upstream locks its shared indexes and keeps call deadlines per thread; 3 bounds memory on the small host.
+limiter = anyio.CapacityLimiter(3)
 
 
 @server.list_resources()
