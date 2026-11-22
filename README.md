@@ -29,7 +29,7 @@ Za tematsku pretragu različitih padežnih oblika može se uključiti `search_la
 
 ### Lokalni indeks pretrage
 
-Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je indeks spreman. Ćirilica, latinica i latinica bez dijakritika imaju zajedničku normalizaciju; `morphology=true` koristi zasebnu kolonu korena reči. Istorijski, regex, case-sensitive i uži upiti i dalje koriste Git. Originalni tekst i istorija ostaju u Git-u.
+Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je indeks spreman. Ćirilica, latinica i latinica bez dijakritika imaju zajedničku normalizaciju; `morphology=true` koristi zasebnu kolonu korena reči. Istorijski, regex, case-sensitive i uži upiti i dalje koriste Git. FTS čuva indeks i lokacije redova, bez dupliranja originalnog teksta; relevantni originalni redovi čitaju se iz Git blobova.
 
 `python tools/serbia_fts.py` gradi indeks u `.git/global-law-cache/serbia-fts/`. Ključ je Git tree teksta koji danas važi i hash implementacije normalizacije i indeksiranja, ne SHA aplikacije. CI ga kešira, a test server ga ponovo koristi iz trajnog lokalnog keša. Novi indeks nastaje samo ako se promeni efektivni sadržaj ili implementacija; binarna baza se ne komituje. Dok se prvi indeks gradi, server ostaje dostupan preko Git pretrage.
 

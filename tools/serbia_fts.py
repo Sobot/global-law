@@ -7,7 +7,7 @@ import sqlite3
 import subprocess
 import tempfile
 import sys
-from contextlib import closing
+from contextlib import closing, contextmanager
 from functools import lru_cache
 
 import mcp_server as mcp
@@ -63,23 +63,36 @@ def connect(path):
 
 def schema(db):
     db.executescript('''
-        CREATE TABLE documents(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE);
-        CREATE TABLE lines(id INTEGER PRIMARY KEY, doc INTEGER NOT NULL, line INTEGER NOT NULL, original TEXT NOT NULL);
+        CREATE TABLE documents(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, blob TEXT NOT NULL);
+        CREATE TABLE lines(id INTEGER PRIMARY KEY, doc INTEGER NOT NULL, line INTEGER NOT NULL);
         CREATE VIRTUAL TABLE fts USING fts5(exact, roots, content='');
     ''')
 
 
-def add_document(db, path, body, rowid):
-    doc = db.execute('INSERT INTO documents(path) VALUES (?)', (path,)).lastrowid
-    originals, searchable = [], []
+def add_document(db, path, blob, body, rowid):
+    doc = db.execute('INSERT INTO documents(path,blob) VALUES (?,?)', (path, blob)).lastrowid
+    locations, searchable = [], []
     for n, line in enumerate(body.split('\n'), 1):
         if line.strip():
             rowid += 1
-            originals.append((rowid, doc, n, line))
+            locations.append((rowid, doc, n))
             searchable.append((rowid, tokens(line), tokens(line, True)))
-    db.executemany('INSERT INTO lines VALUES (?,?,?,?)', originals)
+    db.executemany('INSERT INTO lines VALUES (?,?,?)', locations)
     db.executemany('INSERT INTO fts(rowid,exact,roots) VALUES (?,?,?)', searchable)
     return rowid
+
+
+@contextmanager
+def build_lock(target):
+    # Production and CI are Linux. Concurrent starts must not build the same index twice.
+    try:
+        import fcntl
+    except ImportError:
+        yield
+        return
+    with target.with_suffix('.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 
 def build():
@@ -88,11 +101,16 @@ def build():
         raise RuntimeError('No effective Serbian corpus')
     tree, env = snap
     target = index_path(tree)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with build_lock(target):
+        return build_tree(target, tree, env)
+
+
+def build_tree(target, tree, env):
     if target.is_file():
         print(f'Reusing FTS5 index: {target.name} ({target.stat().st_size} bytes)', flush=True)
         return target
-    target.parent.mkdir(parents=True, exist_ok=True)
-    fd, name = tempfile.mkstemp(prefix='building-', suffix='.sqlite3', dir=target.parent)
+    fd, name = tempfile.mkstemp(prefix=target.stem + '-building-', suffix='.sqlite3', dir=target.parent)
     os.close(fd)
     tmp = Path(name)
     cwd = mcp.ROOT / CORPUS
@@ -123,7 +141,7 @@ def build():
                     body = proc.stdout.read(int(header[2])).decode('utf-8', 'replace')
                     if proc.stdout.read(1) != b'\n':
                         raise RuntimeError('Incomplete blob')
-                    rowid = add_document(db, path, body, rowid)
+                    rowid = add_document(db, path, blob.decode('ascii'), body, rowid)
                 proc.stdin.close()
                 if proc.wait():
                     raise RuntimeError('git cat-file failed')
@@ -193,12 +211,23 @@ class Index:
         if not isinstance(query, Query) or corpus != CORPUS or revision != query.revision:
             return None
         rows = {name: [] for name in names}
+        blobs = {}
         with closing(connect(query.path)) as db:
             marks = ','.join('?' for _ in names)
-            for path, line, original in db.execute('SELECT d.path,l.line,l.original' + self.JOIN + f' AND d.path IN ({marks}) ORDER BY d.path,l.line',
+            for path, blob, line in db.execute('SELECT d.path,d.blob,l.line' + self.JOIN + f' AND d.path IN ({marks}) ORDER BY d.path,l.line',
                                                     (query.match, *names)):
                 if most is None or len(rows[path]) < most:
-                    rows[path].append((line, original))
+                    rows[path].append(line)
+                    blobs[path] = blob
+        # Immutable Git blobs remain the source of truth; no duplicate original text in SQLite.
+        bodies = mcp.read_blobs(mcp.ROOT / CORPUS, list(blobs.values()))
+        if len(bodies) != len(blobs):
+            return None
+        for path, body in zip(blobs, bodies):
+            lines = body.split('\n')
+            if any(n > len(lines) for n in rows[path]):
+                return None
+            rows[path] = [(n, lines[n - 1]) for n in rows[path]]
         return rows
 
 
