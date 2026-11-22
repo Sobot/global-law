@@ -98,6 +98,8 @@ def checkpoint() -> None:
 # git grep starts a thread per core by default, and the server runs several side by side (case law in parts, corpora
 # eight at a time): one search took every core of the machine. Each git grep gets at most GREP_THREADS threads.
 GREP_THREADS = max(1, min(8, (os.cpu_count() or 2) // 2))
+# Keep the global default; the single-corpus Serbia deployment can opt into two threads.
+LAW_GREP_THREADS = 2 if SERBIA_PROFILE and os.environ.get('SERBIA_LAW_GREP_THREADS') == '2' else 1
 # And at most GREP_SLOTS git greps run at once in the whole server: phrase_history over the US courts started eight
 # corpora of twelve parts each, 96 processes (2026-11-09).
 GREP_SLOTS = max(2, (os.cpu_count() or 4) // 2)
@@ -2943,6 +2945,9 @@ def warm() -> None:
             # Each corpus's own history (the timeline is merged from them), alongside its file list.
             list(pool.map(lambda c: (law.corpus_events(c), names(c)), corpora))
         law.timeline()
+        if SERBIA_PROFILE and os.environ.get('SERBIA_LAW_WARM_PACKS') == '1':
+            import serbia_perf
+            serbia_perf.warm_packs(ROOT / 'serbia/national/acts')
     except Exception:  # noqa: BLE001 (a broken checkout is reported by the tool call that meets it, not here)
         pass
 
@@ -6220,7 +6225,7 @@ def t_search_law(args: dict) -> tuple[str, dict]:
         if corpus not in judged:
             # (for SCAN_SECONDS at most: a body of law that nothing narrowed is named as not read, where a search of
             # Romania by a regular expression held the whole call past its time)
-            return corpus, sha, git_run(['git', 'grep', '--threads=1', '-n', '-I', *flags, '-e', pattern, sha, '--', *within(corpus)],
+            return corpus, sha, git_run(['git', 'grep', f'--threads={LAW_GREP_THREADS}', '-n', '-I', *flags, '-e', pattern, sha, '--', *within(corpus)],
                                         cwd=ROOT / corpus, capture_output=True, encoding='utf-8', errors='replace',
                                         timeout=min(GIT_TIMEOUT, SCAN_SECONDS))
         _call.deadline = deadline
@@ -6416,10 +6421,10 @@ def t_search_law(args: dict) -> tuple[str, dict]:
 
             def read(part):
                 if dated:
-                    return git_run(['git', 'grep', '--threads=1', '-n', '-I', *flags, '-e', pattern, *part], cwd=ROOT / corpus,
+                    return git_run(['git', 'grep', f'--threads={LAW_GREP_THREADS}', '-n', '-I', *flags, '-e', pattern, *part], cwd=ROOT / corpus,
                                    capture_output=True, encoding='utf-8', errors='replace', timeout=GIT_TIMEOUT)
                 if corpus not in judged:
-                    return git_run(['git', 'grep', '--threads=1', '-n', '-I', *flags, '-e', pattern, sha, '--', *part], cwd=ROOT / corpus,
+                    return git_run(['git', 'grep', f'--threads={LAW_GREP_THREADS}', '-n', '-I', *flags, '-e', pattern, sha, '--', *part], cwd=ROOT / corpus,
                                    capture_output=True, encoding='utf-8', errors='replace', timeout=GIT_TIMEOUT,
                                    env={**os.environ, 'GIT_LITERAL_PATHSPECS': '1'})
                 while not _GREP_SEM.acquire(timeout=0.5):
@@ -6523,7 +6528,7 @@ def t_search_law(args: dict) -> tuple[str, dict]:
                 found = index_lines(query, corpus, sha, part, RANKED_LINES + 1 if best_first else None)
                 if found is None:
                     if corpus not in judged:
-                        done = git_run(['git', 'grep', '--threads=1', '-n', '-I', *flags, '-e', pattern, sha, '--', *part],
+                        done = git_run(['git', 'grep', f'--threads={LAW_GREP_THREADS}', '-n', '-I', *flags, '-e', pattern, sha, '--', *part],
                                        cwd=ROOT / corpus, capture_output=True, encoding='utf-8', errors='replace', timeout=GIT_TIMEOUT)
                     else:
                         while not _GREP_SEM.acquire(timeout=0.5):
@@ -6704,7 +6709,7 @@ def t_search_law(args: dict) -> tuple[str, dict]:
             if not sha or not words or isinstance(sha, str) and sha.startswith('@'):
                 continue
             try:
-                done = git_run(['git', 'grep', '--threads=1', '-n', '-I', '-i', '-F', *[x for w in words[:8] for x in ('-e', w)], sha, '--', *names],
+                done = git_run(['git', 'grep', f'--threads={LAW_GREP_THREADS}', '-n', '-I', '-i', '-F', *[x for w in words[:8] for x in ('-e', w)], sha, '--', *names],
                                cwd=ROOT / corpus, capture_output=True, encoding='utf-8', errors='replace', timeout=10,
                                env={**os.environ, 'GIT_LITERAL_PATHSPECS': '1'})
             except subprocess.TimeoutExpired:
