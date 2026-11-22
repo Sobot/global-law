@@ -20,7 +20,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - name: Tests
+      - name: Global profile tests
+        env:
+          # Some fixtures amend commits in temporary repositories.
+          GIT_COMMITTER_NAME: Test
+          GIT_COMMITTER_EMAIL: test@example.org
         run: python -m unittest discover -s tests -v
       - name: Pins move only forward
         run: python tools/verify.py

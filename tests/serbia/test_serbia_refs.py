@@ -1,11 +1,8 @@
-import os
 import sys
 import unittest
 from pathlib import Path
 
-os.environ['GLOBAL_LAW_JURISDICTIONS'] = 'serbia'
-os.environ['SERBIA_LAW_MCP'] = '1'
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
 import mcp_server as mcp
 import serbia_refs
 

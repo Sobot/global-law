@@ -42,7 +42,9 @@ Kontejner sluÅ¡a samo na lokalnom portu 8080 instance; nginx i CloudFront omoguÄ
 ## Test
 
 ```sh
-python -m unittest discover -s tests -p 'test_serbia*.py' -v
+python -m pip install -r requirements-serbia.txt
+git submodule update --init serbia/national/acts
+SERBIA_LAW_MCP=1 GLOBAL_LAW_JURISDICTIONS=serbia python -m unittest discover -s tests/serbia -v
 ```
 
 Testovi koriste stvarnu izmenu ZKP-a iz Sl. glasnika RS 35/2019.
