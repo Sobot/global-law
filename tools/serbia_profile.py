@@ -19,7 +19,9 @@ INSTRUCTIONS = (
     'Navedi datum primene propisa (YYYY-MM-DD), ne datum Git commita. Citiraj naziv propisa, član, '
     'provereni stav/tačku i službene izvore: prvenstveno cite.official_url, zatim source_links/sources iz rezultata pretrage. '
     'Navedi šta službeni link prikazuje: Consolidated je verzija teksta, Source je izvor evidentirane izmene i ne mora prikazivati važeći tekst. '
-    'Uz službeni izvor navedi file_url kao permalink konkretne verzije i commit_url iz last_change kao link na izmenu. '
+    'Uz službeni izvor izaberi najrelevantniji GitHub link: file_url za citiranje celog teksta na datum, '
+    'file_diff_url za konkretnu izmenu člana (pre/posle), commit_url za akt o izmeni, njegove datume ili trailere. '
+    'Ne moraš navoditi sva tri; koristi samo vraćene linkove i po potrebi dodaj drugi za kontekst. '
     'Ako službeni izvor nedostaje, reci to; ne izmišljaj linkove. Broj glasnika sam po sebi ne određuje '
     'verziju člana na datum. Ne tvrdi da propis važi van pokrivenosti korpusa; proveri caveats i freshness. '
     'serbia_metadata u pretrazi je pomoćni katalog: publication_key/issue/item iz putanje nisu potvrda službenog glasnika, '
@@ -158,7 +160,7 @@ def get_provision(args):
             if k in ref and (type(ref[k]) is not int or ref[k] < 1):
                 raise upstream.UserError(f'{k} mora biti pozitivan ceo broj.')
     data = lookup(ref, date, args, sha, index)
-    text = '\n'.join(str(v) for v in (data.pop('_body', data['summary']), data.get('subdivision_note'), data.get('gazette_note'), data.get('file_url'), (data.get('cite') or {}).get('official_url')) if v)
+    text = '\n'.join(str(v) for v in (data.pop('_body', data['summary']), data.get('subdivision_note'), data.get('gazette_note'), data.get('file_url'), data.get('commit_url'), data.get('file_diff_url'), (data.get('cite') or {}).get('official_url')) if v)
     return text, data
 
 

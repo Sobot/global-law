@@ -12,6 +12,7 @@ import serbia_refs
 SHA = '09019e8e6a8d73d50b8dfe9a647642cfe35761f7'
 PATH = 'serbia/national/acts/zakon/2011/72-3/clan-021.md'
 REPO = 'https://github.com/lexifina/serbia-law'
+DIFF = f'{REPO}/commit/{SHA}#diff-292938054fc199a46704c8d403db6ce6563a4da71374a34cc64bd918c486d3a0'
 
 
 class SerbiaReferencesTest(unittest.TestCase):
@@ -30,12 +31,16 @@ class SerbiaReferencesTest(unittest.TestCase):
         self.assertIn('Source', change['trailers'])
         self.assertIn('Consolidated', change['trailers'])
         self.assertEqual(change['trailers_all']['In-force'], ['2019-05-29'])
-        self.assertIn({'path': PATH, 'file_url': f'{REPO}/blob/{SHA}/zakon/2011/72-3/clan-021.md'}, change['provision_files'])
+        self.assertIn({'path': PATH, 'file_url': f'{REPO}/blob/{SHA}/zakon/2011/72-3/clan-021.md',
+                       'commit_url': f'{REPO}/commit/{SHA}', 'file_diff_url': DIFF}, change['provision_files'])
 
     def test_read_and_history(self):
         data = self.call('read_law', {'path': PATH, 'date': '2019-05-29'})
         self.assertEqual(data['file_url'], f'{REPO}/blob/{SHA}/zakon/2011/72-3/clan-021.md')
         self.assertEqual(data['last_change']['commit_url'], f'{REPO}/commit/{SHA}')
+        self.assertEqual(data['commit_url'], f'{REPO}/commit/{SHA}')
+        self.assertEqual(data['file_diff_url'], DIFF)
+        self.assertEqual(data['last_change']['file_diff_url'], DIFF)
         self.assertEqual(data['last_change']['in_force'], '2019-05-29')
         self.assertTrue(data['cite']['official_url'])
         self.assert_no_extra_trailers(data)
@@ -44,6 +49,7 @@ class SerbiaReferencesTest(unittest.TestCase):
         self.assertEqual(row['commit_url'], f'{REPO}/commit/{SHA}')
         self.assertEqual(row['published'], '2019-05-21')
         self.assertEqual(row['file_url'], data['file_url'])
+        self.assertEqual(row['file_diff_url'], DIFF)
         self.assert_no_extra_trailers(hist)
 
     def assert_no_extra_trailers(self, obj):
@@ -64,6 +70,7 @@ class SerbiaReferencesTest(unittest.TestCase):
                                                 'date': date, 'by_folder': False})
             row = next(r for r in data['provisions'] if r['path'] == PATH)
             self.assertEqual(row['file_url'], expected)
+            self.assertEqual(row['file_diff_url'], read['file_diff_url'])
             self.assert_no_extra_trailers(data)
             results = self.call('search_law', {'query': 'суди у већу', 'date': date,
                                                'jurisdiction': PATH.rsplit('/', 1)[0]})
@@ -73,6 +80,8 @@ class SerbiaReferencesTest(unittest.TestCase):
             self.assertEqual(row['last_change']['in_force'], read['last_change']['in_force'])
             self.assertEqual(row['last_change']['published'], read['last_change']['published'])
             self.assertEqual(row['last_change']['commit_url'], read['last_change']['commit_url'])
+            self.assertEqual(row['commit_url'], read['commit_url'])
+            self.assertEqual(row['file_diff_url'], read['file_diff_url'])
             self.assertEqual(row['sources'], read['sources'])
             if date == '2019-05-29':
                 self.assertEqual({link['key'] for link in row['source_links']}, {'Source', 'Consolidated'})
@@ -97,6 +106,7 @@ class SerbiaReferencesTest(unittest.TestCase):
     def test_compare_dates_links_changes(self):
         data = self.call('compare_dates', {'path': PATH, 'date_a': '2019-05-28', 'date_b': '2019-05-29'})
         self.assertEqual(data['changes'][0]['commit_url'], f'{REPO}/commit/{SHA}')
+        self.assertEqual(data['changes'][0]['file_diff_url'], DIFF)
         self.assert_no_extra_trailers(data)
 
     def test_no_link_before_record(self):
@@ -117,8 +127,20 @@ class SerbiaReferencesTest(unittest.TestCase):
         self.assertEqual(found['results'][0]['file_url'],
                          f'{REPO}/blob/{mcp.corpus_head(serbia_refs.CORPUS)}/zakon/2011/72-3/clan-021.md')
         self.assertNotIn('commit_url', found['results'][0])
+        self.assertNotIn('file_diff_url', found['results'][0])
         self.assertNotIn('file_url', found['results'][1])
         self.assert_no_extra_trailers(found)
+
+    def test_unchanged_file_at_commit_has_no_diff(self):
+        # The file exists in a later commit that only changes another provision.
+        pin = mcp.corpus_head(serbia_refs.CORPUS)
+        data = {'date': 'today', 'provisions': [{'path': PATH}]}
+        with patch.object(serbia_refs.law, 'file_commit', return_value=pin):
+            _, got = serbia_refs.enrich('list_provisions', '', data, mcp.corpus_head)
+        row = got['provisions'][0]
+        self.assertIn('file_url', row)
+        self.assertIn('commit_url', row)
+        self.assertNotIn('file_diff_url', row)
 
     def test_nonserbian_scope_rejected(self):
         reply = mcp.handle({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
