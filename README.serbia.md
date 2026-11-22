@@ -12,6 +12,16 @@ python -m uvicorn serbia_http:app --app-dir tools --port 8080
 
 Endpoint: `/mcp` (Streamable HTTP); `/health` (provera spremnosti). STDIO: `sh tools/mcp.sh`.
 
+## Srpski MCP profil
+
+Oba interfejsa koriste srpske nazive i opise alata, uz postojeće engleske identifikatore. `world_on_date` i `check_precedent` nisu dostupni u ovom profilu. Srbija je podrazumevani opseg.
+
+- `get_provision` sa `{"citation":"чл. 21 ст. 1 ЗКП","date":"2019-05-29"}` pronalazi i čita član na datum primene u jednom pozivu. Alternativno: `{"law":"ZKP","article":"21","paragraph":1}`. Prihvata i tačan naziv ili folder propisa.
+- `resolve_citations` prepoznaje čl./član, st./stav i tač./tačka na oba pisma, uključujući skraćenice ZKP, KZ, ZOBS, ZPP, ZOO, ZUP i druge. Traženi stav i tačka su metapodaci: vraća se ceo član, bez tvrdnje da je stav/tačka automatski verifikovan. Višeznačni i nerazrešeni citati ostaju označeni.
+- `search_changes` prihvata npr. `Sl. glasnik RS, br. 35/2019`; `resolve_citations` prikazuje evidenciju izmena za pronađene brojeve. Broj glasnika nije sam po sebi datum primene.
+
+Ako član nije zapisan zasebnim fajlom, alat traži precizniji upit ili pregled celog propisa. Nazivi propisa se traže u katalogu dostupnog korpusa, pa preimenovani i istorijski nazivi koji nisu u katalogu mogu zahtevati tačnu putanju. Rasponi članova i složena nabrajanja stavova nisu automatski verifikovani.
+
 ## Reference
 
 Relevantni odgovori dodaju `commit_url` uz konkretnu izmenu i `file_url` uz verziju člana kada odgovarajući MD fajl postoji u commitu. `read_law` čuva postojeća pravna polja, a `law_details` i dalje vraća originalne `message`, `trailers` i `trailers_all`, uz `provision_files` sa permalinkovima prvih 60 izmenjenih članova i oznaku `provision_files_truncated` ako ih ima više. Ostali alati ne dupliraju trailere.
@@ -29,7 +39,7 @@ Kontejner sluša samo na lokalnom portu 8080 instance; nginx i CloudFront omogu�
 ## Test
 
 ```sh
-python -m unittest discover -s tests -p test_serbia_refs.py -v
+python -m unittest discover -s tests -p 'test_serbia*.py' -v
 ```
 
 Testovi koriste stvarnu izmenu ZKP-a iz Sl. glasnika RS 35/2019.

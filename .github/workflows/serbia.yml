@@ -74,7 +74,7 @@ jobs:
           docker run --rm \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
-            "$IMAGE" python -m unittest discover -s tests -p test_serbia_refs.py -v
+            "$IMAGE" python -m unittest discover -s tests -p 'test_serbia*.py' -v
           test -n "$(find "$cache" -type f -print -quit)"
       - name: Publish tested runtime
         if: github.event_name != 'pull_request' && steps.runtime.outputs.publish == 'true'
@@ -100,7 +100,7 @@ jobs:
           SOURCE: ${{ github.sha }}
           INSTANCE: i-01396c06c547ccf79
         run: |
-          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait || test -d /opt/serbia-law-mcp/.git","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
+          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
           for attempt in $(seq 1 180); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)

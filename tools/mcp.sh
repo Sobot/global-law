@@ -19,7 +19,7 @@ for f in ("tools/mcp_server.py", "tools/law.py"):
     compile(open(f, "rb").read(), f, "exec")
 import usc_cite
 ' 2>&1); then
-    GLOBAL_LAW_PYTHON="$p" PYTHONDONTWRITEBYTECODE=1 exec "$p" tools/mcp_server.py "$@"
+    GLOBAL_LAW_PYTHON="$p" PYTHONDONTWRITEBYTECODE=1 exec "$p" tools/serbia_profile.py "$@"
   fi
   [ -n "$why" ] || why="$("$p" -c 'import platform; print(platform.python_version())' 2>/dev/null) ($p): $(printf '%s\n' "$out" | tail -n 1)"
 done
