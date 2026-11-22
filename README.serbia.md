@@ -25,6 +25,8 @@ Oba interfejsa koriste srpske nazive i opise alata, uz postojeće engleske ident
 
 Ako član nije zapisan zasebnim fajlom, alat traži precizniji upit ili pregled celog propisa. Nazivi propisa se traže u katalogu dostupnog korpusa, pa preimenovani i istorijski nazivi koji nisu u katalogu mogu zahtevati tačnu putanju. Rasponi članova i složena nabrajanja stavova nisu automatski verifikovani.
 
+Pre prve dostupne verzije stanje člana može biti nepoznato. Za član zakona čija putanja navodi kasniju godinu prvog objavljivanja, `read_law` je prikazuje kao podatak o objavljivanju, ne kao datum donošenja ili stupanja na snagu. Prethodni propisi i odgovarajući članovi nisu automatski povezani; ukinuti propisi i ranije verzije mogu nedostajati. Prazna istorijska pretraga ne dokazuje da nisu postojali.
+
 ## Reference
 
 Relevantni odgovori dodaju `commit_url` uz konkretnu izmenu i `file_url` uz verziju člana kada odgovarajući MD fajl postoji u commitu. `read_law` čuva postojeća pravna polja, a `law_details` i dalje vraća originalne `message`, `trailers` i `trailers_all`, uz `provision_files` sa permalinkovima prvih 60 izmenjenih članova i oznaku `provision_files_truncated` ako ih ima više. Ostali alati ne dupliraju trailere.

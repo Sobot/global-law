@@ -2,6 +2,7 @@ import sys
 import os
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'tools'))
 
@@ -50,6 +51,46 @@ class SerbiaProfileTest(unittest.TestCase):
             self.assertEqual(got['requested']['paragraph'], 1)
             self.assertFalse(got['subdivision_verified'])
             self.assertTrue(got['cite']['official_url'])
+
+    def test_zkp_article_26_before_record(self):
+        path = FOLDER + '/clan-026.md'
+        current = self.call('read_law', {'path': path, 'date': 'today'})
+        self.assertTrue(current['in_force'])
+        self.assertTrue(current['file_url'])
+        self.assertTrue(current['cite']['official_url'])
+        before = self.call('read_law', {'path': path, 'date': '2010-12-31'})
+        self.assertIsNone(before['in_force'])
+        self.assertFalse(before['in_record'])
+        self.assertEqual(before['record_starts'], '2012-01-15')
+        self.assertEqual(before['publication_year'], 2011)
+        self.assertIn('not an enactment or commencement date', before['why'])
+        self.assertIn('does not rule out retroactive effect', before['why'])
+        self.assertIn('does not identify a predecessor', before['why'])
+        self.assertNotIn('may well have been in force then', before['why'])
+        self.assertNotIn('file_url', before)
+        resolved = self.call('get_provision', {'citation': 'cl. 26 st. 1 ZKP', 'date': '2010-12-31'})
+        self.assertEqual(resolved['path'], path)
+        self.assertEqual(resolved['status'], 'unknown')
+        self.assertEqual(resolved['why'], before['why'])
+        same_year = self.call('read_law', {'path': path, 'date': '2011-01-01'})
+        self.assertIsNone(same_year['in_force'])
+        self.assertNotIn('publication_year', same_year)
+
+    def test_empty_historical_search_warns_about_missing_coverage(self):
+        result = self.call('search_law', {'query': 'Ако је кривично дело извршено на домаћем броду',
+                                          'date': '2010-12-31', 'jurisdiction': 'serbia', 'max_results': 10})
+        if result['page']['total'] == 0:
+            self.assertTrue(any('ne dokazuje' in note for note in result['caveats']))
+        with patch.object(serbia_profile, '_search_law',
+                          return_value=('none', {'date': '2010-12-31', 'page': {'total': 0}, 'caveats': []})):
+            text, empty = serbia_profile.search_law({'date': '2010-12-31'})
+        self.assertIn('ne dokazuje', text)
+        self.assertTrue(empty['caveats'])
+        with patch.object(serbia_profile, '_search_law',
+                          return_value=('found', {'date': '2010-12-31', 'page': {'total': 1}, 'caveats': []})):
+            text, found = serbia_profile.search_law({'date': '2010-12-31', 'offset': 10})
+        self.assertEqual(text, 'found')
+        self.assertEqual(found['caveats'], [])
 
     def test_morphological_search_in_historical_article(self):
         result = self.call('search_law', {'query': 'sastava sudskog veca', 'morphology': True,
