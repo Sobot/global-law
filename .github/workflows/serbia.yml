@@ -71,6 +71,34 @@ jobs:
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
           docker image inspect "$IMAGE" --format 'Runtime image: {{.Size}} bytes'
+      - name: Determine effective Serbian FTS index identity
+        id: fts
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          cache="$PWD/.git/global-law-cache"
+          sudo install -d -o 10001 -g 10001 -m 0755 "$cache"
+          key=$(docker run --rm \
+            --mount "type=bind,src=$PWD,dst=/app,readonly" \
+            --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
+            "$IMAGE" python tools/serbia_fts.py --key)
+          [[ "$key" =~ ^[0-9a-f]{20}-[0-9a-f]{40}$ ]]
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: .git/global-law-cache/serbia-fts
+          key: serbia-fts-${{ steps.fts.outputs.key }}
+      - name: Build or reuse Serbian FTS5 index
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+        run: |
+          cache="$PWD/.git/global-law-cache"
+          sudo install -d -o 10001 -g 10001 -m 0755 "$cache/serbia-fts"
+          sudo chown -R 10001:10001 "$cache/serbia-fts"
+          docker run --rm \
+            --mount "type=bind,src=$PWD,dst=/app,readonly" \
+            --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
+            "$IMAGE" python tools/serbia_fts.py
       - name: Test exact runtime and corpus with persistent cache
         env:
           IMAGE: ${{ steps.image.outputs.name }}
@@ -78,7 +106,7 @@ jobs:
           cache="$PWD/.git/global-law-cache"
           sudo install -d -o 10001 -g 10001 -m 0755 "$cache"
           docker run --rm \
-            -e SERBIA_LAW_GREP_THREADS=2 -e SERBIA_LAW_WARM_PACKS=1 \
+            -e SERBIA_LAW_GREP_THREADS=2 -e SERBIA_LAW_WARM_PACKS=1 -e SERBIA_FTS_TEST=1 \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
             "$IMAGE" python -m unittest discover -s tests/serbia -v

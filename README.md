@@ -27,6 +27,12 @@ Treći primer koristi broj glasila da pronađe [komit sa izmenom](https://github
 
 Za tematsku pretragu različitih padežnih oblika može se uključiti `search_law(query="naknada štete", morphology=true)`. To je opciona, približna pretraga kratkih fraza (1–3 reči), bez spoljnog API-ja. Redovna pretraga, citati i istorija ostaju nepromenjeni. Rezultati sadrže originalni tekst, ne generisane oblike.
 
+### Lokalni indeks pretrage
+
+Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je indeks spreman. Ćirilica, latinica i latinica bez dijakritika imaju zajedničku normalizaciju; `morphology=true` koristi zasebnu kolonu korena reči. Istorijski, regex, case-sensitive i uži upiti i dalje koriste Git. Originalni tekst i istorija ostaju u Git-u.
+
+`python tools/serbia_fts.py` gradi indeks u `.git/global-law-cache/serbia-fts/`. Ključ je Git tree teksta koji danas važi i hash implementacije normalizacije i indeksiranja, ne SHA aplikacije. CI ga kešira, a test server ga ponovo koristi iz trajnog lokalnog keša. Novi indeks nastaje samo ako se promeni efektivni sadržaj ili implementacija; binarna baza se ne komituje. Dok se prvi indeks gradi, server ostaje dostupan preko Git pretrage.
+
 ## Benchmark pretrage
 
 Lokalni `tools/serbia_benchmark.py` meri Recall@K, Hit@K, MRR@K i trajanje pretrage na istom datumu i Git pinu. Ne ocenjuje pravno tumačenje. Koristi postojeća [pitanja srb-legal-rag](https://github.com/RatkoNikolic/srb-legal-rag/tree/bd839dc35da24250268e9c95b93d5834ad8ba828/goldens) autora Ratka Nikolića (CC BY 4.0); originalni skup nije kopiran u ovaj repozitorijum.
