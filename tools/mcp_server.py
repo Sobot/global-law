@@ -12127,9 +12127,6 @@ def in_cyrillic(name: str, handler):
     return run
 
 
-for _name in ('find_provision', 'search_law', 'search_changes', 'phrase_history'):
-    HANDLERS[_name] = in_cyrillic(_name, HANDLERS[_name])
-
 # --- Greek without accents --------------------------------------------------------------------------------------------
 # Greek is often typed without its accents ("ετησια αδεια" for "ετήσια άδεια"), and the text search compares letters
 # as written: such a query found nothing in Greece's or Cyprus's law. When it finds nothing as typed, it is asked

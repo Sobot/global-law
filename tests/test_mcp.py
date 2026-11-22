@@ -113,6 +113,13 @@ class Server:
 
 
 class GenericLauncher(unittest.TestCase):
+    def test_generic_handlers_do_not_install_the_serbian_profile(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import mcp_server as engine
+
+        base_handler = next(fn for name, _, _, _, fn in engine.TOOLS if name == 'phrase_history')
+        self.assertIs(engine.HANDLERS['phrase_history'], base_handler)
+
     def test_stdio_launcher_uses_generic_engine_even_with_serbia_environment(self):
         request = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
                    'params': {'protocolVersion': '2025-06-18', 'capabilities': {}}}

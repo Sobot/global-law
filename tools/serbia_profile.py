@@ -357,6 +357,8 @@ def install():
     upstream.HANDLERS.update(get_provision=get_provision, resolve_citations=resolve_citations,
                              find_provision=find_provision, read_law=read_law,
                              search_changes=search_changes, search_law=search_law)
+    for name in ('find_provision', 'search_law', 'search_changes', 'phrase_history'):
+        upstream.HANDLERS[name] = upstream.in_cyrillic(name, upstream.HANDLERS[name])
     if 'morphology' not in upstream.PROPERTIES['search_law']:
         upstream.PROPERTIES['search_law'].append('morphology')
     upstream.PROPERTIES['get_provision'] = list(GET_PROPERTIES)
