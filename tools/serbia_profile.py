@@ -127,7 +127,7 @@ def lookup(ref, date, args, sha, index):
         else:
             return {**base, 'status': 'ambiguous', 'summary': 'Više mogućih članova; navedi tačnu putanju propisa.', 'candidates': [{'path': p, 'title': t} for p, t in live or paths]}
     path, name = paths[0]
-    body, data = upstream.t_read_law({'path': path, 'date': date, **{k: args[k] for k in ('include_text', 'max_chars', 'offset') if k in args}})
+    body, data = read_law({'path': path, 'date': date, **{k: args[k] for k in ('include_text', 'max_chars', 'offset') if k in args}})
     body, data = serbia_refs.enrich('read_law', body, data, upstream.corpus_head)
     status = 'in force' if data.get('in_force') is True else 'not in force' if data.get('in_force') is False else 'unknown'
     result = {**data, **base, 'law_title': name, 'status': status}
@@ -213,7 +213,27 @@ def search_changes(args):
     return _BASE['search_changes'](args)
 
 
-def search_law(args):
+def read_law(args):
+    text, data = _BASE['read_law'](args)
+    path, date = data.get('path', ''), data.get('date', '')
+    match = re.fullmatch(re.escape(CORPUS) + r'/zakon/(\d{4})/([a-z]*\d+-\d+)/clan-\d+(?:-?[a-z])?\.md', path)
+    generic = '; it may well have been in force then.'
+    why = data.get('why', '')
+    if (match and data.get('in_record') is False and data.get('in_force') is None
+            and date[:4] < match[1] and generic in why):
+        note = (f" The act's folder identifies its first publication year as {match[1]} "
+                f"and its publication identifier as {match[2]}; "
+                "this is not an enactment or commencement date and does not rule out retroactive effect. "
+                "This lookup does not verify a predecessor or an equivalent provision. Check the official publication "
+                "and search earlier acts by title and subject; article numbers and wording can differ.")
+        revised = why.replace(generic, '.' + note)
+        text = text.replace(why, revised, 1)
+        data = {**data, 'why': revised, 'summary': upstream.first_line(revised),
+                'publication_year': int(match[1]), 'historical_coverage_note': note.strip()}
+    return text, data
+
+
+def _search_law(args):
     args = dict(args)
     enabled = args.pop('morphology', False)
     if type(enabled) is not bool:
@@ -263,6 +283,18 @@ def search_law(args):
     return note + '\n' + text, {**data, 'morphology_applied': True, 'morphology_query': args['query'], 'morphology_note': note}
 
 
+def search_law(args):
+    text, data = _search_law(args)
+    date = data.get('date') or upstream.date_arg(args.get('date'))
+    empty = data.get('page', {}).get('total') == 0 or ('page' not in data and data.get('results') == [])
+    if date < upstream.law.day('today') and empty:
+        note = ('Nema rezultata u dostupnom korpusu; ukinuti propisi i ranije verzije mogu nedostajati. '
+                'To ne dokazuje da propis ili odgovarajuća odredba nisu postojali.')
+        text += '\n' + note
+        data = {**data, 'caveats': [*data.get('caveats', []), note]}
+    return text, data
+
+
 GET_PROPERTIES = {
     'citation': {'type': 'string', 'description': 'Jedan citat, npr. čl. 21 st. 1 ZKP ili КЗ члан 246.'},
     'law': {'type': 'string', 'description': 'Tačan naziv, skraćenica (ZKP, KZ, ZOBS, ZPP) ili folder propisa.'},
@@ -308,7 +340,8 @@ def install():
     for name in HIDDEN:
         upstream.HANDLERS.pop(name, None)
     upstream.HANDLERS.update(get_provision=get_provision, resolve_citations=resolve_citations,
-                             find_provision=find_provision, search_changes=search_changes, search_law=search_law)
+                             find_provision=find_provision, read_law=read_law,
+                             search_changes=search_changes, search_law=search_law)
     if 'morphology' not in upstream.PROPERTIES['search_law']:
         upstream.PROPERTIES['search_law'].append('morphology')
     upstream.PROPERTIES['get_provision'] = list(GET_PROPERTIES)

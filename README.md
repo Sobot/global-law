@@ -18,6 +18,12 @@ This repository holds them all as submodules, arranged by jurisdiction, and move
 commit. The tools read the `In-force` date of every commit, so they give the law of any country on any date that its
 record covers.
 
+For Serbia, a provision's status before the first available version may be unknown. When `read_law` reports a later
+first-publication year from an act's path, that year is not its enactment or commencement date and does not rule out
+retroactive effect. Predecessor acts and equivalent provisions are not automatically linked; repealed acts and earlier
+versions may be missing. An empty historical search does not prove that they never existed. Check official publications
+and search earlier acts by title and subject, as article numbers and wording may differ.
+
 ```
 global-law/
 ├── manifest.json                       every corpus: path, repository, history, coverage and dates
