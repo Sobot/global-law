@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "zakon": {
+      "type": "streamable-http",
+      "url": "https://d38cy0uwrxlk77.cloudfront.net/mcp"
+    }
+  }
+}
