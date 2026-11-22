@@ -4,6 +4,11 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      force_rebuild_index:
+        description: Rebuild Serbian SQLite index even if the content is unchanged (CI and test host)
+        type: boolean
+        default: false
   schedule:
     - cron: '25 4 * * *'
 permissions:
@@ -85,30 +90,36 @@ jobs:
           [[ "$key" =~ ^[0-9a-f]{20}-[0-9a-f]{40}$ ]]
           echo "key=$key" >> "$GITHUB_OUTPUT"
       # Restore and save separately so the index is kept even when later tests fail.
+      # Keys are per run so a forced rebuild can replace an index for the same content.
       - name: Restore Serbian FTS5 index
         id: fts-cache
+        if: inputs.force_rebuild_index != true
         uses: actions/cache/restore@v4
         with:
           path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
-          key: serbia-fts-${{ steps.fts.outputs.key }}
+          key: serbia-fts-${{ steps.fts.outputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: serbia-fts-${{ steps.fts.outputs.key }}-
       - name: Build or reuse Serbian FTS5 index
         env:
           IMAGE: ${{ steps.image.outputs.name }}
+          FORCE_FTS: ${{ inputs.force_rebuild_index == true }}
         run: |
           cache="$PWD/.git/global-law-cache"
           sudo install -d -o 10001 -g 10001 -m 0755 "$cache/serbia-fts"
           sudo chown -R 10001:10001 "$cache/serbia-fts"
+          args=()
+          if [[ "$FORCE_FTS" == true ]]; then args+=(--force); fi
           docker run --rm \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
-            "$IMAGE" python tools/serbia_fts.py
+            "$IMAGE" python tools/serbia_fts.py "${args[@]}"
           test -f ".git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3"
       - name: Save Serbian FTS5 index
-        if: steps.fts-cache.outputs.cache-hit != 'true'
+        if: inputs.force_rebuild_index == true || steps.fts-cache.outputs.cache-matched-key == ''
         uses: actions/cache/save@v4
         with:
           path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
-          key: serbia-fts-${{ steps.fts.outputs.key }}
+          key: serbia-fts-${{ steps.fts.outputs.key }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Test exact runtime and corpus with persistent cache
         env:
           IMAGE: ${{ steps.image.outputs.name }}
@@ -143,9 +154,10 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}
           CORPUS: ${{ needs.build.outputs.corpus }}
           SOURCE: ${{ github.sha }}
+          FORCE_FTS: ${{ inputs.force_rebuild_index == true }}
           INSTANCE: i-01396c06c547ccf79
         run: |
-          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait || test -d /opt/serbia-law-mcp/.git","cd /opt/serbia-law-mcp","git fetch --no-recurse-submodules --filter=blob:none --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
+          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" --arg force "$FORCE_FTS" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait || test -d /opt/serbia-law-mcp/.git","cd /opt/serbia-law-mcp","git fetch --no-recurse-submodules --filter=blob:none --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image + " " + $force]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
           for attempt in $(seq 1 180); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)
