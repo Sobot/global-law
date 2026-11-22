@@ -22,6 +22,7 @@ if docker container inspect "$backup" >/dev/null 2>&1; then
 fi
 
 old_root=$(git rev-parse HEAD)
+was_sparse=$(git config --bool core.sparseCheckout || echo false)
 old_corpus=
 if [[ -e "$corpus/.git" ]]; then
   old_corpus=$(git -C "$corpus" rev-parse HEAD)
@@ -69,6 +70,7 @@ rollback() {
   fi
   if "$changed"; then
     git checkout --no-recurse-submodules --detach "$old_root" &&
+      { [[ $was_sparse == true ]] || git sparse-checkout disable; } &&
       { [[ -z "$old_corpus" ]] || git -C "$corpus" checkout --detach "$old_corpus"; } ||
       { echo "Failed to restore the previous Git pins; manual recovery required." >&2; exit "$status"; }
   fi
@@ -88,6 +90,8 @@ if docker container inspect "$name" >/dev/null 2>&1; then
   docker rename "$name" "$backup"
 fi
 changed=true
+# Use the same runtime and test paths as the Serbia CI checkout.
+git sparse-checkout set --cone data plugins/sr serbia tests tools
 git checkout --no-recurse-submodules --detach "$source_sha"
 if [[ ! -e "$corpus/.git" ]]; then
   git submodule update --init -- "$corpus"
