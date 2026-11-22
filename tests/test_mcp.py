@@ -123,7 +123,13 @@ class GenericLauncher(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         reply = json.loads(result.stdout.splitlines()[0])
         self.assertEqual(reply['result']['serverInfo']['name'], 'global-law')
-        self.assertIn('Global law:', reply['result']['instructions'])
+        instructions = reply['result']['instructions']
+        self.assertIn('Global law:', instructions)
+        self.assertIn("publisher's page, never this server, its repository or an archived copy; "
+                      "say what that page shows (this provision on the date, the act as in force then, or today's text only). "
+                      'If the requested date is outside the record, do not claim to know the text.', instructions)
+        for field in ('file_url', 'file_diff_url', 'commit_url'):
+            self.assertNotIn(field, instructions)
 
     def test_optional_engine_hooks_prepare_arguments_and_enrich_results(self):
         sys.path.insert(0, str(ROOT / 'tools'))
