@@ -1,5 +1,6 @@
 """Local, disposable FTS5 index of the Serbian text in force today."""
 import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -11,7 +12,7 @@ from contextlib import closing, contextmanager
 from functools import lru_cache
 
 import mcp_server as mcp
-from serbia_citations import normalize
+from serbia_citations import ALIASES, article_number, normalize
 from serbia_stemmer import stem
 
 CORPUS = 'serbia/national/acts'
@@ -53,8 +54,22 @@ def snapshot():
     return rev, (tree, env)
 
 
-def index_path(tree):
-    return mcp.law._store() / 'serbia-fts' / f'{version()}-{tree}.sqlite3'
+@lru_cache(maxsize=2)
+def catalog_metadata(pin):
+    # Reuse the upstream title catalog; store a compact, exact projection only.
+    titles = {folder: info.get('title', '') for folder, info in mcp.folder_titles(CORPUS, pin).items()}
+    digest = hashlib.sha256(json.dumps(titles, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    return titles, digest
+
+
+def current_catalog():
+    pin = mcp.corpus_head(CORPUS)
+    return catalog_metadata(pin) if pin else ({}, '')
+
+
+def index_path(tree, catalog_hash=''):
+    identity = hashlib.sha256((version() + catalog_hash).encode()).hexdigest()[:20]
+    return mcp.law._store() / 'serbia-fts' / f'{identity}-{tree}.sqlite3'
 
 
 def connect(path):
@@ -63,14 +78,56 @@ def connect(path):
 
 def schema(db):
     db.executescript('''
-        CREATE TABLE documents(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, blob TEXT NOT NULL);
+        CREATE TABLE acts(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, kind TEXT NOT NULL,
+                          title TEXT, publication_year INTEGER, publication_key TEXT, gazette_prefix TEXT,
+                          issue INTEGER, item INTEGER);
+        CREATE TABLE act_aliases(act INTEGER NOT NULL, alias TEXT NOT NULL, PRIMARY KEY(alias, act));
+        CREATE TABLE documents(id INTEGER PRIMARY KEY, path TEXT NOT NULL UNIQUE, blob TEXT NOT NULL,
+                               act INTEGER NOT NULL, article TEXT, heading TEXT, heading_context TEXT);
+        CREATE INDEX documents_article ON documents(act, article);
+        CREATE INDEX acts_publication ON acts(publication_year, issue, item);
         CREATE TABLE lines(id INTEGER PRIMARY KEY, doc INTEGER NOT NULL, line INTEGER NOT NULL);
         CREATE VIRTUAL TABLE fts USING fts5(exact, roots, content='');
     ''')
 
 
-def add_document(db, path, blob, body, rowid):
-    doc = db.execute('INSERT INTO documents(path,blob) VALUES (?,?)', (path, blob)).lastrowid
+def act_fields(path, titles):
+    parent = path.rsplit('/', 1)[0] if '/' in path else path
+    folder = parent if parent in titles or ('/' in parent and not re.fullmatch(r'\d{4}', parent.rsplit('/', 1)[-1])) else path
+    kind = path.split('/', 1)[0]
+    parts = folder.split('/')
+    year, key, prefix, issue, item = None, None, None, None, None
+    # Preserve the publisher's raw identifier. Numeric components are only
+    # parsed from the recognizable national/municipal folder convention.
+    if len(parts) >= 3 and re.fullmatch(r'\d{4}', parts[-2]):
+        year, key = int(parts[-2]), parts[-1]
+        match = re.fullmatch(r'([a-z]*)(\d+)-(\d+)', key)
+        if match:
+            prefix, issue, item = match[1] or None, int(match[2]), int(match[3])
+    return folder, kind, titles.get(folder), year, key, prefix, issue, item
+
+
+def add_document(db, path, blob, body, rowid, titles=None):
+    fields = act_fields(path, titles or {})
+    db.execute('INSERT OR IGNORE INTO acts(path,kind,title,publication_year,publication_key,gazette_prefix,issue,item) VALUES (?,?,?,?,?,?,?,?)', fields)
+    act = db.execute('SELECT id FROM acts WHERE path=?', (fields[0],)).fetchone()[0]
+    if fields[2]:
+        title_key = normalize(fields[2])
+        db.executemany('INSERT OR IGNORE INTO act_aliases VALUES (?,?)',
+                       ((act, alias) for alias, name in ALIASES.items() if normalize(name) == title_key))
+    match = re.fullmatch(r'clan-(\d+(?:-?[a-z])?)\.md', path.rsplit('/', 1)[-1])
+    article = article_number(match[1]) if match else None
+    heading, context, previous = None, None, None
+    for line in body.split('\n'):
+        if line.startswith('#'):
+            heading = line.lstrip('#').strip()[:300]
+            # The previous line may be a title or a section label, not necessarily an official article title.
+            context = previous if article else None
+            break
+        if line.strip():
+            previous = line.strip()[:300]
+    doc = db.execute('INSERT INTO documents(path,blob,act,article,heading,heading_context) VALUES (?,?,?,?,?,?)',
+                     (path, blob, act, article, heading, context)).lastrowid
     locations, searchable = [], []
     for n, line in enumerate(body.split('\n'), 1):
         if line.strip():
@@ -95,19 +152,24 @@ def build_lock(target):
         yield
 
 
-def build():
+def build(force=False):
     rev, snap = snapshot()
     if not rev:
         raise RuntimeError('No effective Serbian corpus')
     tree, env = snap
-    target = index_path(tree)
+    titles, catalog_hash = current_catalog()
+    target = index_path(tree, catalog_hash)
     target.parent.mkdir(parents=True, exist_ok=True)
+    before = target.stat().st_ino if target.is_file() else None
     with build_lock(target):
-        return build_tree(target, tree, env)
+        # A concurrent startup build may already have satisfied a forced request.
+        if force and target.is_file() and target.stat().st_ino != before:
+            force = False
+        return build_tree(target, tree, env, titles, force)
 
 
-def build_tree(target, tree, env):
-    if target.is_file():
+def build_tree(target, tree, env, titles, force=False):
+    if target.is_file() and not force:
         print(f'Reusing FTS5 index: {target.name} ({target.stat().st_size} bytes)', flush=True)
         return target
     fd, name = tempfile.mkstemp(prefix=target.stem + '-building-', suffix='.sqlite3', dir=target.parent)
@@ -141,7 +203,7 @@ def build_tree(target, tree, env):
                     body = proc.stdout.read(int(header[2])).decode('utf-8', 'replace')
                     if proc.stdout.read(1) != b'\n':
                         raise RuntimeError('Incomplete blob')
-                    rowid = add_document(db, path, blob.decode('ascii'), body, rowid)
+                    rowid = add_document(db, path, blob.decode('ascii'), body, rowid, titles)
                 proc.stdin.close()
                 if proc.wait():
                     raise RuntimeError('git cat-file failed')
@@ -149,6 +211,7 @@ def build_tree(target, tree, env):
                 if proc.poll() is None:
                     proc.kill()
                     proc.wait()
+                proc.stdin.close()
                 proc.stdout.close()
             db.execute("INSERT INTO fts(fts) VALUES ('optimize')")
             db.commit()
@@ -179,13 +242,31 @@ def prepare(text, morphology=False):
     if not WORDS.search(text):
         return None
     rev, snap = snapshot()
-    if rev and (path := index_path(snap[0])).is_file():
+    if rev and (path := index_path(snap[0], current_catalog()[1])).is_file():
         return Query(text, path, rev, morphology)
     return None
 
 
 class Index:
     JOIN = ' FROM fts JOIN lines l ON l.id=fts.rowid JOIN documents d ON d.id=l.doc WHERE fts MATCH ?'
+
+    def metadata(self, query, names):
+        if not names:
+            return {}
+        with closing(connect(query.path)) as db:
+            marks = ','.join('?' for _ in names)
+            result = {path: {k: v for k, v in zip(('act_path', 'act_kind', 'act_title', 'publication_year',
+                     'publication_key', 'gazette_prefix', 'issue', 'item', 'article', 'heading', 'heading_context', 'abbreviations'), values) if v is not None}
+                    for path, *values in db.execute('SELECT d.path,a.path,a.kind,a.title,a.publication_year,a.publication_key,'
+                    'a.gazette_prefix,a.issue,a.item,d.article,d.heading,d.heading_context,'
+                    '(SELECT group_concat(alias) FROM act_aliases WHERE act=a.id) FROM documents d JOIN acts a ON d.act=a.id '
+                    f'WHERE d.path IN ({marks})', names)}
+            for row in result.values():
+                if 'abbreviations' in row:
+                    row['abbreviations'] = row['abbreviations'].split(',')
+                if 'publication_key' in row:
+                    row['publication_reference_source'] = 'repository_path'
+            return result
 
     def counts(self, query, corpora, case_law):
         if not isinstance(query, Query) or case_law or CORPUS not in corpora:
@@ -234,6 +315,8 @@ class Index:
 if __name__ == '__main__':
     if sys.argv[1:] == ['--key']:
         _, snap = snapshot()
-        print(index_path(snap[0]).stem)
+        print(index_path(snap[0], current_catalog()[1]).stem)
+    elif sys.argv[1:] == ['--force']:
+        build(force=True)
     else:
         build()

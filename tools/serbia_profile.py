@@ -19,6 +19,8 @@ INSTRUCTIONS = (
     'Navedi datum primene propisa (YYYY-MM-DD), ne datum Git commita. Citiraj naziv propisa, član, '
     'provereni stav/tačku i izvore iz cite, file_url i last_change. Broj glasnika sam po sebi ne određuje '
     'verziju člana na datum. Ne tvrdi da propis važi van pokrivenosti korpusa; proveri caveats i freshness. '
+    'serbia_metadata u pretrazi je pomoćni katalog: publication_key/issue/item iz putanje nisu potvrda službenog glasnika, '
+    'a heading_context nije nužno naslov člana. Za citiranje koristi proverene izvore. '
     'Korpus nije potpuna baza sudske prakse. Odgovori na pravna pitanja moraju razlikovati tekst propisa od tumačenja.'
 )
 HIDDEN = {'world_on_date', 'check_precedent'}
@@ -223,6 +225,15 @@ def search_law(args):
                 prepared = None
             if prepared is not None:
                 text, data = upstream.t_search_law({**args, 'query': prepared})
+                try:
+                    rows = data.get('results', [])
+                    metadata = upstream.search_index.metadata(prepared, list(dict.fromkeys(
+                        row['path'][len(CORPUS) + 1:] for row in rows if row['path'].startswith(CORPUS + '/'))))
+                    for row in rows:
+                        if info := metadata.get(row['path'][len(CORPUS) + 1:]):
+                            row['serbia_metadata'] = info
+                except sqlite3.Error:
+                    pass  # optional metadata must not hide matching legal text
                 data = {**data, 'search_backend': 'sqlite_fts5', 'morphology_applied': enabled}
                 if enabled:
                     note = 'Približna pretraga padežnih oblika; proveri relevantnost izvornog teksta.'

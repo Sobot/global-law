@@ -4,6 +4,8 @@ set -euo pipefail
 source_sha=$1
 corpus_sha=$2
 image=$3
+force_fts=${4:-false}
+[[ $force_fts == true || $force_fts == false ]]
 [[ $source_sha =~ ^[0-9a-f]{40}$ && $corpus_sha =~ ^[0-9a-f]{40}$ ]]
 [[ $image =~ ^ghcr\.io/sobot/global-law:runtime-[0-9a-f]{32}$ ]]
 cd /opt/serbia-law-mcp
@@ -39,6 +41,9 @@ if [[ $(docker inspect --format '{{index .Config.Labels "serbia.source"}}' "$nam
       $(git ls-tree HEAD "$corpus" | awk '{print $3}') == "$corpus_sha" ]] &&
       curl --fail --silent http://127.0.0.1:8080/health >/dev/null; then
   echo "Already running the tested pins."
+  if [[ $force_fts == true ]]; then
+    docker exec "$name" python tools/serbia_fts.py --force
+  fi
   exit 0
 fi
 
@@ -116,5 +121,8 @@ docker run -d --restart unless-stopped --name "$name" \
   --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
   "$image"
 curl --fail --retry 25 --retry-all-errors --retry-delay 3 http://127.0.0.1:8080/health
+if [[ $force_fts == true ]]; then
+  docker exec "$name" python tools/serbia_fts.py --force
+fi
 trap - EXIT
 if "$had_old"; then docker rm "$backup"; fi

@@ -27,14 +27,39 @@ class SerbiaFTSTest(unittest.TestCase):
                 tree = subprocess.check_output(['git', 'write-tree'], cwd=repo, text=True).strip()
                 return tree, (tree, dict(os.environ))
 
-            with patch.object(fts.mcp, 'ROOT', root), patch.object(fts.mcp.law, '_store', return_value=root / 'cache'), patch.object(fts, 'snapshot', side_effect=snapshot):
+            with patch.object(fts.mcp, 'ROOT', root), patch.object(fts.mcp.law, '_store', return_value=root / 'cache'), patch.object(fts, 'snapshot', side_effect=snapshot), patch.object(fts, 'current_catalog', return_value=({}, '')):
                 path = fts.build()
                 with patch.object(fts, 'add_document', side_effect=AssertionError('must not reindex')):
                     self.assertEqual(fts.build(), path)
+                    with self.assertRaises(AssertionError):
+                        fts.build(force=True)
+                    self.assertTrue(path.is_file())  # failed force must leave the old index intact
+                with patch.object(fts, 'add_document', wraps=fts.add_document) as add:
+                    self.assertEqual(fts.build(force=True), path)
+                    self.assertTrue(add.called)
                 act.write_text('Накнада штете', encoding='utf-8')
                 new_path = fts.build()
                 self.assertNotEqual(new_path, path)
                 self.assertTrue(path.is_file())
+
+    def test_serbian_metadata(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / 'fixture.sqlite3'
+            rel = 'zakon/2011/72-3/clan-021.md'
+            with sqlite3.connect(path) as db:
+                fts.schema(db)
+                fts.add_document(db, rel, 'blob', 'Састав судских већа\n# Члан 21.\nСастав суда', 0,
+                                 {'zakon/2011/72-3': 'Законик о кривичном поступку'})
+            q = fts.Query('sastav', path, 'rev')
+            metadata = fts.Index().metadata(q, [rel])[rel]
+            self.assertEqual(metadata['article'], '21')
+            self.assertEqual(metadata['heading'], 'Члан 21.')
+            self.assertEqual(metadata['heading_context'], 'Састав судских већа')
+            self.assertEqual(metadata['act_kind'], 'zakon')
+            self.assertEqual(metadata['publication_year'], 2011)
+            self.assertEqual((metadata['issue'], metadata['item']), (72, 3))
+            self.assertEqual(metadata['abbreviations'], ['zkp'])
+            self.assertNotEqual(fts.index_path('a', 'first'), fts.index_path('a', 'second'))
 
     def test_scripts_and_diacritics(self):
         self.assertEqual(fts.tokens('Годишњи одмор'), fts.tokens('godisnji odmor'))

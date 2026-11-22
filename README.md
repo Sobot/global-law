@@ -33,6 +33,10 @@ Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je in
 
 `python tools/serbia_fts.py` gradi indeks u `.git/global-law-cache/serbia-fts/`. Ključ je Git tree teksta koji danas važi i hash implementacije normalizacije i indeksiranja, ne SHA aplikacije. CI ga kešira, a test server ga ponovo koristi iz trajnog lokalnog keša. Novi indeks nastaje samo ako se promeni efektivni sadržaj ili implementacija; binarna baza se ne komituje. Dok se prvi indeks gradi, server ostaje dostupan preko Git pretrage.
 
+SQLite dodatno čuva kompaktan katalog akata: vrstu i putanju akta, naziv iz postojećeg Global Law kataloga, poznate srpske skraćenice, identifikator objave iz putanje (godina, broj i stavka kada su jednoznačno kodirani), broj člana, zaglavlje i kontekst zaglavlja. Ovi podaci se vraćaju kao `serbia_metadata` u rezultatima FTS pretrage. Identifikator putanje nije potvrda službenog glasnika niti datuma stupanja na snagu; za to se koristi upstream istorija. Otisak naziva iz kataloga takođe ulazi u ključ indeksa. Ne kopiraju se Git istorija, datumi važenja, izmene, niti službeni izvori, jer ih Global Law već indeksira.
+
+Ručna obnova: **Actions → Serbia MCP CI and deployment → Run workflow → force_rebuild_index**. Na `main` obnavlja i indeks na test serveru, čak i ako je isti commit već deployovan. Lokalno: `python tools/serbia_fts.py --force`. Nova baza se objavljuje atomarno tek nakon izgradnje; neuspeh ostavlja prethodnu.
+
 ## Benchmark pretrage
 
 Lokalni `tools/serbia_benchmark.py` meri Recall@K, Hit@K, MRR@K i trajanje pretrage na istom datumu i Git pinu. Ne ocenjuje pravno tumačenje. Koristi postojeća [pitanja srb-legal-rag](https://github.com/RatkoNikolic/srb-legal-rag/tree/bd839dc35da24250268e9c95b93d5834ad8ba828/goldens) autora Ratka Nikolića (CC BY 4.0); originalni skup nije kopiran u ovaj repozitorijum.
