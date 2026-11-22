@@ -24,9 +24,10 @@ jobs:
             data/freshness.tsv
           sparse-checkout-cone-mode: false
       - name: Read upstream's Serbian pin and freshness row
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          pin=$(curl --fail --silent --show-error --retry 3 \
-            "https://api.github.com/repos/lexifina/global-law/contents/$CORPUS?ref=main" | jq -er '.sha')
+          pin=$(gh api "repos/lexifina/global-law/contents/$CORPUS?ref=main" --jq '.sha')
           [[ "$pin" =~ ^[0-9a-f]{40}$ ]]
           curl --fail --silent --show-error --retry 3 -o /tmp/freshness.tsv \
             https://raw.githubusercontent.com/lexifina/global-law/main/data/freshness.tsv
