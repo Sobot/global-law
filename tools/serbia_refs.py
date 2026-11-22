@@ -1,5 +1,4 @@
 """Add GitHub permalinks without duplicating upstream legal metadata."""
-import os
 import re
 from urllib.parse import quote
 
@@ -11,10 +10,6 @@ DETAIL_LINK_LIMIT = 60  # same bound as upstream's law_details diffs
 TOOLS = {'read_law', 'provision_history', 'compare_dates', 'law_details', 'laws_between',
          'search_changes', 'who_wrote', 'find_provision', 'list_provisions', 'search_law',
          'changes_between', 'resolve_citations', 'applies_to_case'}
-
-
-def enabled():
-    return os.environ.get('SERBIA_LAW_MCP') == '1'
 
 
 def provision_path(path):

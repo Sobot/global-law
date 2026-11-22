@@ -40,18 +40,21 @@ sys.dont_write_bytecode = True  # never leave cache files inside the tree (they 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import law  # noqa: E402
 import usc_cite  # noqa: E402  (US Code citations, shared with the case-law builders)
-import serbia_refs  # noqa: E402
-
-import skill_resources
 
 ROOT = law.ROOT
-SKILLS = skill_resources.load(Path(__file__).resolve().parents[1] / "plugins", "sr") if serbia_refs.enabled() else {}
+SERBIA_PROFILE = os.environ.get('SERBIA_LAW_MCP') == '1'
+SKILLS = {}
+if SERBIA_PROFILE:
+    import serbia_refs
+    import skill_resources
+
+    SKILLS = skill_resources.load(ROOT / 'plugins', 'sr')
 # Dual-era (MCP 2026-07-28 "Versioning and Compatibility"): modern requests carry their version in _meta and need no
 # handshake; legacy clients open with initialize and are served under the version they negotiate.
 MODERN_VERSIONS = ('2026-07-28',)
 PROTOCOL_VERSIONS = ('2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05')  # legacy, initialize-based
 SERVER = {'name': 'global-law', 'title': 'Global law: every jurisdiction, one history', 'version': '1.1.1'}  # as the MCP Registry lists it
-if serbia_refs.enabled():
+if SERBIA_PROFILE:
     SERVER = {'name': 'serbia-law-mcp', 'title': 'Propisi Republike Srbije', 'version': '0.1.0'}
 CAPABILITIES = {'tools': {'listChanged': False}, 'resources': {}, 'prompts': {'listChanged': False}}
 META = 'io.modelcontextprotocol/'
@@ -12205,7 +12208,7 @@ PROMPTS = {
 
 
 INSTRUCTIONS = (
-    ('Serbia Law MCP: exclusively the law of the Republic of Serbia, as a Git history. ' if serbia_refs.enabled() else '') +
+    ('Serbia Law MCP: exclusively the law of the Republic of Serbia, as a Git history. ' if SERBIA_PROFILE else '') +
     'Global law: the law of several jurisdictions as one git history, each change dated by the day it took effect and '
     'credited to the law that made it. Start with list_jurisdictions, then find_provision for a path, then read_law. '
     'Questions with their own tool, ahead of a text search: what relies on, cites or uses the definitions of a provision '
@@ -12324,7 +12327,7 @@ def _handle(method, mid, params: dict) -> dict:
         elif method == 'tools/list':
             result = {'tools': tool_list()}
         elif method == 'resources/list':
-            result = {'resources': resources() + skill_resources.describe(SKILLS)}
+            result = {'resources': resources() + (skill_resources.describe(SKILLS) if SKILLS else [])}
         elif method == 'resources/read':
             uri = params.get('uri', '')
             name = uri.removeprefix('global-law://')
@@ -12383,7 +12386,7 @@ def _handle(method, mid, params: dict) -> dict:
             for old, new in ALIASES.get(name, {}).items():  # an argument's earlier name, still read
                 if old in args:
                     args = {**{k: v for k, v in args.items() if k != old}, new: args[new] if args.get(new) not in (None, '') else args[old]}
-            if serbia_refs.enabled() and 'jurisdiction' in PROPERTIES[name] and not args.get('jurisdiction'):
+            if SERBIA_PROFILE and 'jurisdiction' in PROPERTIES[name] and not args.get('jurisdiction'):
                 args = {**args, 'jurisdiction': 'serbia'}
             unknown = sorted(set(args) - set(PROPERTIES[name]))
             if unknown:  # the schema says additionalProperties: false; a misspelt argument should not pass silently.
@@ -12407,7 +12410,7 @@ def _handle(method, mid, params: dict) -> dict:
                        and (name != 'read_law' or args['path'].strip().endswith('.md')))
                 with law.focus(path_arg(args['path'])) if one else law.focus():
                     text, data = HANDLERS[name](args)
-                    if serbia_refs.enabled():
+                    if SERBIA_PROFILE:
                         text, data = serbia_refs.enrich(name, text, data, corpus_head)
                 if name != 'list_jurisdictions' and not args.get('path') and not args.get('paths') and not args.get('jurisdiction'):
                     # An answer over every jurisdiction says which it could not search: else "nothing found" would

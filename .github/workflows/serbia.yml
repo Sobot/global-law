@@ -80,7 +80,7 @@ jobs:
           docker run --rm \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
-            "$IMAGE" python -m unittest discover -s tests -p 'test_serbia*.py' -v
+            "$IMAGE" python -m unittest discover -s tests/serbia -v
           test -n "$(find "$cache" -type f -print -quit)"
       - name: Publish tested runtime
         if: github.event_name != 'pull_request' && steps.runtime.outputs.publish == 'true'
