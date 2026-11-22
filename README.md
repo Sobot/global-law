@@ -1,65 +1,102 @@
-# Zakon — MCP za propise Republike Srbije
+# Global law
 
-Pitajte asistenta kako glasi član zakona, koji je tekst važio na određeni datum ili šta se promenilo između dve verzije. Odgovor možete proveriti preko linka na tekst člana u odgovarajućoj verziji ili na izmenu koja ga je uvela.
+**Global law** is a read-only [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for exploring legal texts and their history across jurisdictions. Ask an AI assistant for a provision, the text that was in force on a particular date, the change that introduced it, or a comparison between versions—and receive Git-backed references to the underlying text and changes.
 
-## Povezivanje
+The hosted server is available at:
 
-U klijentu koji podržava udaljene MCP servere dodajte konektor sa sledećim podacima.
-
-| Polje | Vrednost |
-| --- | --- |
-| Naziv | `zakon` |
-| Opis | Pretraga važećih i istorijskih propisa Republike Srbije sa referencama na članove, verzije i izmene. |
-| Test MCP URL | `https://d38cy0uwrxlk77.cloudfront.net/mcp` |
-| Transport | Streamable HTTP |
-
-## Šta možete da pitate
-
-> @zakon Kako je glasio cl. 21 st. 1 ZKP 29. maja 2019? Daj mi link na izvor.
-
-Konektor prepoznaje oznaku člana i kada je upišete bez kvačica. U ovom primeru pronalazi Zakonik o krivičnom postupku i vraća [član 21 „Sastav sudskih veća“ u verziji za 29. maj 2019.](https://github.com/lexifina/serbia-law/blob/09019e8e6a8d73d50b8dfe9a647642cfe35761f7/zakon/2011/72-3/clan-021.md). Link vodi na ceo član. Prilikom citiranja pojedinačnog stava ili tačke proverite njihove granice u tekstu.
-
-> @zakon Упореди члан 21 ЗКП како је гласио 28. и 29. маја 2019. Прикажи само шта се променило и дај линкове на обе верзије.
-
-> @zakon Koja izmena ZKP-a je objavljena u „Sl. glasniku RS“, br. 35/2019? Daj mi link na izmenu.
-
-Treći primer koristi broj glasila da pronađe [komit sa izmenom](https://github.com/lexifina/serbia-law/commit/09019e8e6a8d73d50b8dfe9a647642cfe35761f7). Za pitanje o važenju navedite i datum koji vas zanima. Ako za taj period nedostaje tekst, odgovor treba da navede granicu dostupne istorije.
-
-Za tematsku pretragu različitih padežnih oblika može se uključiti `search_law(query="naknada štete", morphology=true)`. To je opciona, približna pretraga kratkih fraza (1–3 reči), bez spoljnog API-ja. Redovna pretraga, citati i istorija ostaju nepromenjeni. Rezultati sadrže originalni tekst, ne generisane oblike.
-
-### Lokalni indeks pretrage
-
-Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je indeks spreman. Ćirilica, latinica i latinica bez dijakritika imaju zajedničku normalizaciju; `morphology=true` koristi zasebnu kolonu korena reči. Istorijski, regex, case-sensitive i uži upiti i dalje koriste Git. FTS čuva indeks i lokacije redova, bez dupliranja originalnog teksta; relevantni originalni redovi čitaju se iz Git blobova.
-
-`python tools/serbia_fts.py` gradi indeks u `.git/global-law-cache/serbia-fts/`. Ključ je Git tree teksta koji danas važi i hash implementacije normalizacije i indeksiranja, ne SHA aplikacije. CI ga kešira, a test server ga ponovo koristi iz trajnog lokalnog keša. Novi indeks nastaje samo ako se promeni efektivni sadržaj ili implementacija; binarna baza se ne komituje. Dok se prvi indeks gradi, server ostaje dostupan preko Git pretrage.
-
-SQLite dodatno čuva kompaktan katalog akata: vrstu i putanju akta, naziv iz postojećeg Global Law kataloga, poznate srpske skraćenice, identifikator objave iz putanje (godina, broj i stavka kada su jednoznačno kodirani), broj člana, zaglavlje i kontekst zaglavlja. Ovi podaci se vraćaju kao `serbia_metadata` u rezultatima FTS pretrage. Identifikator putanje nije potvrda službenog glasnika niti datuma stupanja na snagu; za to se koristi upstream istorija. Otisak naziva iz kataloga takođe ulazi u ključ indeksa. Ne kopiraju se Git istorija, datumi važenja, izmene, niti službeni izvori, jer ih Global Law već indeksira.
-
-`search_law` (FTS i istorijska Git pretraga) uz `file_url` vraća `version_commit`, `last_change` (uključujući datum stupanja na snagu i objave) i `source_links`/`sources` iz odgovarajućeg commita, kada su dostupni. `Source` označava izvor izmene, a `Consolidated` verziju teksta. Poruke jedinstvenih commitova sa strane rezultata čitaju se grupno i keširaju po SHA; FTS indeks ostaje nepromenjen.
-
-Uz službeni izvor, datirani rezultati mogu vratiti tri GitHub reference: `file_url` (ceo tekst verzije), `commit_url` (akt o izmeni i traileri) i `file_diff_url` (direktno na diff člana u commitu, samo kada je sadržaj promenjen ili dodat). Asistent bira najrelevantniju referencu prema pitanju.
-
-Ručna obnova: **Actions → Serbia MCP CI and deployment → Run workflow → force_rebuild_index**. Na `main` obnavlja i indeks na test serveru, čak i ako je isti commit već deployovan. Lokalno: `python tools/serbia_fts.py --force`. Nova baza se objavljuje atomarno tek nakon izgradnje; neuspeh ostavlja prethodnu.
-
-## Benchmark pretrage
-
-Lokalni `tools/serbia_benchmark.py` meri Recall@K, Hit@K, MRR@K i trajanje pretrage na istom datumu i Git pinu. Ne ocenjuje pravno tumačenje. Koristi postojeća [pitanja srb-legal-rag](https://github.com/RatkoNikolic/srb-legal-rag/tree/bd839dc35da24250268e9c95b93d5834ad8ba828/goldens) autora Ratka Nikolića (CC BY 4.0); originalni skup nije kopiran u ovaj repozitorijum.
-
-```sh
-git clone https://github.com/RatkoNikolic/srb-legal-rag.git ../srb-legal-rag
-git -C ../srb-legal-rag checkout bd839dc35da24250268e9c95b93d5834ad8ba828
-python tools/serbia_benchmark.py ../srb-legal-rag/goldens/golden-situational-60.jsonl --date 2026-11-22 --k 10
-python tools/serbia_benchmark.py tests/serbia/morphology-benchmark.jsonl --date 2019-05-29 --k 10
+```text
+https://global-law.lexifina.com/mcp
 ```
 
-Potreban je postojeći checkout srpskog korpusa sa istorijom. Neusaglašeni identifikatori, nedostajući članci i greške prijavljuju se odvojeno. Rezultati nisu direktno uporedivi sa RAG benchmarkom tačnosti odgovora. Duga situaciona pitanja se ne prepravljaju u ključne reči; morfološko proširenje se posebno proverava kratkim frazama u jediničnim testovima.
+It uses Streamable HTTP, requires no account or API key, and does not modify the corpus or make outbound calls. It is designed for research and source discovery; its answers are not legal advice.
 
-## Uputstva za asistente
+## What it can do
 
-Paket sadrži [tri uputstva (skills)](plugins/sr/skills/) za citiranje odredbe, utvrđivanje teksta koji je važio na određeni datum i poređenje verzija. Server ih izlaže kao MCP resurse koje klijent može da pročita.
+- Find provisions by citation, title, words, or short phrases.
+- Read a provision as it existed on a specified date.
+- Compare versions and identify what changed.
+- Trace the commits, authors, publication references, and source links behind a provision.
+- Resolve legal citations and link directly to the relevant corpus files and diffs.
+- Search the jurisdictions and bodies of law available to the server.
+- Expose guidance for citing provisions, checking historical validity, and comparing versions.
 
-## Poreklo projekta i licenca
+The server exposes 18 read-only tools. Every tool is annotated as non-destructive and idempotent. The hosted deployment refreshes its public corpus twice daily and applies request limits to protect availability.
 
-Ovaj server je srpska adaptacija projekta [Global Law](https://github.com/lexifina/global-law). Tekstovi propisa i istorija izmena dolaze iz [korpusa za Srbiju](https://github.com/lexifina/serbia-law). Dokumentacija izvornog projekta opisuje [zajedničke alate i komande](FEATURES.md) i [globalni MCP interfejs](MCP.md).
+## Example questions
 
-Ovaj repozitorijum je objavljen pod [CC0](LICENSE.md). Za tekstove propisa važe uslovi navedeni u repozitorijumu korpusa.
+- `How did Article 21 of the Serbian Code of Criminal Procedure read on 29 May 2019? Include the source.`
+- `Compare the versions of this provision on 28 and 29 May 2019 and show only the changes.`
+- `Which amendment introduced the change published in Official Gazette RS No. 35/2019?`
+- `Find the provisions about termination of a contract in French law and link to the source text.`
+
+For reliable historical results, include the jurisdiction and the date you care about. If the requested history is not present in the selected corpus, the answer should state that boundary rather than infer the law.
+
+## Connect a client
+
+Add a remote MCP server with the URL above. No authentication is required.
+
+### Claude
+
+Open **Customize → Connectors → Add custom connector**, enter the URL, choose **No sign in**, and add it to a chat.
+
+### ChatGPT
+
+Open the custom MCP server/plugin setup, enter the URL, choose no authentication, and enable the server in a new chat. Availability depends on the account or workspace plan.
+
+### Local MCP clients
+
+For clients that support a JSON configuration, use:
+
+```json
+{
+  "mcpServers": {
+    "global-law": {
+      "url": "https://global-law.lexifina.com/mcp"
+    }
+  }
+}
+```
+
+Client-specific installation instructions and the complete protocol reference are in [MCP.md](MCP.md).
+
+## Run it locally
+
+A local checkout needs Git, Python 3.9 or newer, and the legal corpus you want to query. The server uses the repository and Git history directly; it has no third-party runtime dependencies.
+
+```sh
+git clone --recurse-submodules https://github.com/Sobot/global-law.git
+cd global-law
+sh tools/mcp.sh
+```
+
+To download only selected jurisdictions, use the country helper before starting the server:
+
+```sh
+python3 tools/countries.py add france spain
+```
+
+The repository contains client configuration, shared tools, tests, and country corpora as Git submodules. See [MCP.md](MCP.md) for deployment details and [FEATURES.md](FEATURES.md) for the shared command-line features.
+
+## Important limitations
+
+- Corpus coverage and history depend on the jurisdiction repositories and the checkout or hosted deployment being queried.
+- “Nothing found” means nothing was found in the searched corpus; it does not mean that no such law exists.
+- Search results and historical answers should be checked against the linked source text.
+- The service provides legal information and references, not legal advice or a determination of anyone’s rights.
+- Public, unauthenticated access should be used responsibly and within the service limits.
+
+## Project status
+
+The project is preparing the hosted server for publication in the ChatGPT Apps Directory and Anthropic Claude Connectors Directory. The submission checklist is tracked in [issue #30](https://github.com/Sobot/global-law/issues/30), including domain verification, public legal and support pages, tool-description review, starter prompts, test scenarios, and final smoke testing.
+
+## Related documentation
+
+- [MCP server reference and client setup](MCP.md)
+- [Feature reference](FEATURES.md)
+- [Serbian deployment and search documentation](README.serbia.md)
+- [Contribution guide](CONTRIBUTING.md)
+- [License](LICENSE.md)
+
+## Origin and license
+
+This repository is a deployment of the [Global Law](https://github.com/lexifina/global-law) project, using jurisdiction-specific legal corpora such as [Serbia law](https://github.com/lexifina/serbia-law). The repository is released under [CC0](LICENSE.md). Individual legal corpora may have additional terms described in their source repositories.
