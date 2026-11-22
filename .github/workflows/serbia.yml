@@ -84,9 +84,12 @@ jobs:
             "$IMAGE" python tools/serbia_fts.py --key)
           [[ "$key" =~ ^[0-9a-f]{20}-[0-9a-f]{40}$ ]]
           echo "key=$key" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      # Restore and save separately so the index is kept even when later tests fail.
+      - name: Restore Serbian FTS5 index
+        id: fts-cache
+        uses: actions/cache/restore@v4
         with:
-          path: .git/global-law-cache/serbia-fts
+          path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
           key: serbia-fts-${{ steps.fts.outputs.key }}
       - name: Build or reuse Serbian FTS5 index
         env:
@@ -99,6 +102,13 @@ jobs:
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
             "$IMAGE" python tools/serbia_fts.py
+          test -f ".git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3"
+      - name: Save Serbian FTS5 index
+        if: steps.fts-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .git/global-law-cache/serbia-fts/${{ steps.fts.outputs.key }}.sqlite3
+          key: serbia-fts-${{ steps.fts.outputs.key }}
       - name: Test exact runtime and corpus with persistent cache
         env:
           IMAGE: ${{ steps.image.outputs.name }}
