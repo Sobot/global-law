@@ -5,6 +5,9 @@ Probna verzija zasnovana na `lexifina/global-law`. Čita samo `serbia/national/a
 ## Lokalno pokretanje
 
 ```sh
+git clone --depth 1 --filter=blob:none --sparse https://github.com/Sobot/global-law.git
+cd global-law
+git sparse-checkout set --cone data plugins/sr serbia tests tools
 git submodule update --init serbia/national/acts
 python -m pip install -r requirements-serbia.txt
 python -m uvicorn serbia_http:app --app-dir tools --port 8080
@@ -32,7 +35,7 @@ Relevantni odgovori dodaju `commit_url` uz konkretnu izmenu i `file_url` uz verz
 
 Workflow `serbia.yml` koristi mali runtime image iz GHCR, čiji tag zavisi samo od Dockerfile-a i Python zavisnosti. Source i pin srpskog korpusa testiraju se u tom image-u. Na rasporedu se osvežava samo pin korpusa; ako iste verzije već rade, deployment preskače restart.
 
-Na grani `main` deployment koristi postojeći AWS OIDC role, Systems Manager i `tools/deploy_serbia_test.sh`. EC2 zadržava kompletan checkout u `/opt/serbia-law-mcp`; Git istorija se inkrementalno preuzima, a `.git/global-law-cache` ostaje na disku između deploymenta. Checkout je u kontejneru read-only, dok je samo cache upisiv. Ako GHCR nije dostupan, na instanci se gradi samo runtime iz dva ulazna fajla. Neuspešan deployment vraća prethodne Git pinove i kontejner.
+Na grani `main` deployment koristi postojeći AWS OIDC role, Systems Manager i `tools/deploy_serbia_test.sh`. CI i EC2 koriste sparse-checkout glavnog repozitorijuma. Srpski submodul zadržava punu istoriju. Na EC2 radno stablo je u `/opt/serbia-law-mcp`; Git istorija se inkrementalno preuzima, a `.git/global-law-cache` ostaje na disku između deploymenta. Checkout je u kontejneru read-only, dok je samo cache upisiv. Ako GHCR nije dostupan, na instanci se gradi samo runtime iz dva ulazna fajla. Neuspešan deployment vraća prethodne Git pinove i kontejner.
 
 Kontejner sluša samo na lokalnom portu 8080 instance; nginx i CloudFront omogućavaju HTTPS. Za lokalni Docker test prvo inicijalizujte srpski submodule i montirajte checkout i cache isto kao CI (videti workflow).
 

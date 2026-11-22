@@ -24,6 +24,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
+          sparse-checkout: |
+            data
+            plugins/sr
+            serbia
+            tests
+            tools
           submodules: false
           persist-credentials: false
       - name: Checkout complete Serbian history only
@@ -100,7 +106,7 @@ jobs:
           SOURCE: ${{ github.sha }}
           INSTANCE: i-01396c06c547ccf79
         run: |
-          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait","cd /opt/serbia-law-mcp","git fetch --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
+          commands=$(jq -nc --arg source "$SOURCE" --arg corpus "$CORPUS" --arg image "$IMAGE" '{executionTimeout:["1800"],commands:["set -eu","cloud-init status --wait","cd /opt/serbia-law-mcp","git fetch --no-recurse-submodules --filter=blob:none --depth 1 origin " + $source,"deploy_script=$(git show " + $source + ":tools/deploy_serbia_test.sh)","bash -c \"$deploy_script\" -- " + $source + " " + $corpus + " " + $image]}')
           command_id=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript --parameters "$commands" --query Command.CommandId --output text)
           for attempt in $(seq 1 180); do
             status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE" --query Status --output text 2>/dev/null || true)
