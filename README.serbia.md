@@ -33,3 +33,15 @@ python -m unittest discover -s tests -p test_serbia_refs.py -v
 ```
 
 Testovi koriste stvarnu izmenu ZKP-a iz Sl. glasnika RS 35/2019.
+
+## Skillovi
+
+Paket za srpski jezik je u `plugins/sr/`. Novi postupak definišite u
+`skills/<naziv>/SKILL.md` unutar paketa. U YAML zaglavlju navedite `name`
+(isto kao naziv direktorijuma) i `description` (kada koristiti postupak).
+Manifest i MCP konfiguracija nalaze se u korenu paketa.
+
+Posle restarta server izlaže iste dokumente kroz `resources/list` i
+`resources/read` na HTTP i stdio transportu. Klijent može da ih pročita na
+`skill://sr/<naziv>/SKILL.md`. Za aktiviranje skillova u klijentu koji
+podržava Agent Plugins učitajte paket iz `plugins/sr/`.

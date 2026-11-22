@@ -8,6 +8,7 @@ os.environ['GLOBAL_LAW_HOSTED'] = '1'
 
 import anyio
 from mcp import types
+from mcp.server.lowlevel.helper_types import ReadResourceContents
 from mcp.server.lowlevel import Server
 from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.applications import Starlette
@@ -18,6 +19,19 @@ import mcp_server as upstream
 
 server = Server('serbia-law-mcp', version='0.1.0', instructions=upstream.INSTRUCTIONS)
 limiter = anyio.CapacityLimiter(1)  # upstream shares caches and processes calls in order
+
+
+@server.list_resources()
+async def list_resources():
+    return [types.Resource.model_validate(r) for r in upstream.skill_resources.describe(upstream.SKILLS)]
+
+
+@server.read_resource()
+async def read_resource(uri):
+    text = upstream.SKILLS.get(str(uri))
+    if text is None:
+        raise ValueError(f'Unknown resource {uri}')
+    return [ReadResourceContents(content=text, mime_type='text/markdown')]
 
 
 @server.list_tools()

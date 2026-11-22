@@ -42,7 +42,10 @@ import law  # noqa: E402
 import usc_cite  # noqa: E402  (US Code citations, shared with the case-law builders)
 import serbia_refs  # noqa: E402
 
+import skill_resources
+
 ROOT = law.ROOT
+SKILLS = skill_resources.load(Path(__file__).resolve().parents[1] / "plugins", "sr") if serbia_refs.enabled() else {}
 # Dual-era (MCP 2026-07-28 "Versioning and Compatibility"): modern requests carry their version in _meta and need no
 # handshake; legacy clients open with initialize and are served under the version they negotiate.
 MODERN_VERSIONS = ('2026-07-28',)
@@ -12306,7 +12309,9 @@ def _lone_surrogate(value) -> bool:
 
 def _handle(method, mid, params: dict) -> dict:
     try:
-        if method in ('tools/call', 'resources/read'):
+        if method == 'resources/read' and not isinstance(params.get('uri'), str):
+            return error(mid, -32602, 'uri must be a string')
+        if method == 'tools/call' or (method == 'resources/read' and params.get('uri') not in SKILLS):
             warmed()
         if method == 'server/discover':
             result = {'supportedVersions': list(MODERN_VERSIONS + PROTOCOL_VERSIONS), 'capabilities': CAPABILITIES, 'instructions': INSTRUCTIONS}
@@ -12319,14 +12324,16 @@ def _handle(method, mid, params: dict) -> dict:
         elif method == 'tools/list':
             result = {'tools': tool_list()}
         elif method == 'resources/list':
-            result = {'resources': resources()}
+            result = {'resources': resources() + skill_resources.describe(SKILLS)}
         elif method == 'resources/read':
             uri = params.get('uri', '')
             name = uri.removeprefix('global-law://')
             match = next((r for r in resources() if r['uri'] == uri), None)
             law_uri = (re.fullmatch(r'global-law://law/(.+?)(?:\?date=(\d{4}-\d{2}-\d{2}))?(?:[?&]offset=(\d{1,9}))?', uri)
                        if isinstance(uri, str) else None)
-            if match and name == 'manifest.json':
+            if uri in SKILLS:
+                result = {'contents': [{'uri': uri, 'mimeType': 'text/markdown', 'text': SKILLS[uri]}]}
+            elif match and name == 'manifest.json':
                 # Every corpus the tree pins, as the tools read it: manifest.json lists those it held on 2 November 2026,
                 # and each corpus added since describes itself (law.with_unlisted).
                 result = {'contents': [{'uri': uri, 'mimeType': match['mimeType'],
