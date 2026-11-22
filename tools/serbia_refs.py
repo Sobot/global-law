@@ -1,5 +1,9 @@
-"""Add GitHub permalinks without duplicating upstream legal metadata."""
+"""Add GitHub permalinks and official sources using upstream legal metadata."""
+from collections import OrderedDict
+import os
 import re
+import tempfile
+import threading
 from urllib.parse import quote
 
 import law
@@ -7,6 +11,9 @@ import law
 CORPUS = 'serbia/national/acts'
 REPO = 'https://github.com/lexifina/serbia-law'
 DETAIL_LINK_LIMIT = 60  # same bound as upstream's law_details diffs
+SOURCE_CACHE_LIMIT = 4096
+_source_cache = OrderedDict()
+_source_lock = threading.Lock()
 TOOLS = {'read_law', 'provision_history', 'compare_dates', 'law_details', 'laws_between',
          'search_changes', 'who_wrote', 'find_provision', 'list_provisions', 'search_law',
          'changes_between', 'resolve_citations', 'applies_to_case'}
@@ -17,11 +24,67 @@ def provision_path(path):
             and '\n' not in path and '\r' not in path)
 
 
-def enrich(tool, text, data, corpus_head):
+def sources_many(shas, parse_links):
+    """Read only uncached commits in one Git batch; share upstream's immutable .msg cache."""
+    out, missing = {}, []
+    with _source_lock:
+        for sha in dict.fromkeys(shas):
+            if sha in _source_cache:
+                out[sha] = _source_cache[sha]
+                _source_cache.move_to_end(sha)
+            else:
+                missing.append(sha)
+    if not missing:
+        return out
+    bodies, uncached = {}, []
+    store = law._store() / 'blobs'
+    for sha in missing:
+        try:
+            bodies[sha] = (store / sha[:2] / f'{sha}.msg').read_text(encoding='utf-8')
+        except (OSError, UnicodeError):
+            uncached.append(sha)
+    if uncached:
+        for sha, (kind, raw) in zip(uncached, law._cat_batch(law.corpus_dir(CORPUS), uncached)):
+            if kind != b'commit' or raw is None or b'\n\n' not in raw:
+                continue  # do not cache missing objects as empty sources
+            # Do not populate the shared message cache with lossy decoding.
+            try:
+                body = raw.split(b'\n\n', 1)[1].decode('utf-8')
+            except UnicodeDecodeError:
+                continue
+            bodies[sha] = body
+            kept = store / sha[:2] / f'{sha}.msg'
+            tmp = None
+            try:
+                kept.parent.mkdir(parents=True, exist_ok=True)
+                with tempfile.NamedTemporaryFile(dir=kept.parent, delete=False) as f:
+                    tmp = f.name
+                    f.write(body.encode('utf-8'))
+                os.replace(tmp, kept)
+            except OSError:
+                pass  # an unwritable optional cache must not hide sources
+            finally:
+                if tmp:
+                    try:
+                        os.unlink(tmp)
+                    except OSError:
+                        pass
+    parsed = {sha: tuple(parse_links(body)) for sha, body in bodies.items()}
+    with _source_lock:
+        for sha, info in parsed.items():
+            _source_cache[sha] = info
+            _source_cache.move_to_end(sha)
+        while len(_source_cache) > SOURCE_CACHE_LIMIT:
+            _source_cache.popitem(last=False)
+    out.update(parsed)
+    return out
+
+
+def enrich(tool, text, data, corpus_head, parse_links=None):
     if tool not in TOOLS:
         return text, data
     links, pending = [], []
-    shas, versions = {}, {}
+    shas, versions, changes = {}, {}, {}
     cwd = law.corpus_dir(CORPUS)
 
     def full_sha(sha):
@@ -136,12 +199,38 @@ def enrich(tool, text, data, corpus_head):
     alternatives = {(sha, rel): sorted(law._earlier_names(CORPUS, rel) - {rel})
                     for _, sha, rel in pending if (sha, rel) not in found}
     earlier = existing((sha, old) for (sha, _), names in alternatives.items() for old in names)
+    dated_results = tool == 'search_law' and parse_links is not None
+    verified = []
     for row, sha, rel in pending:
         if (sha, rel) not in found:
             rel = next((old for old in alternatives[sha, rel] if (sha, old) in earlier), None)
         if rel:
             row['file_url'] = f'{REPO}/blob/{sha}/{quote(rel, safe="/")}'
             links.append(row['file_url'])
+            if dated_results:
+                verified.append((row, sha))
+    if verified:
+        source_data = sources_many((sha for _, sha in verified), parse_links)
+        official = []
+        for row, sha in verified:
+            path = row['path']
+            key = (path, sha)
+            if key not in changes:
+                change = next((h for h in reversed(law.history(path)) if h['commit'] == sha), None)
+                changes[key] = {k: change[k] for k in ('commit', 'law', 'kind', 'in_force', 'published', 'enacted',
+                                'corrects', 'restates', 'credit_corrected_from') if k in change} if change else None
+            row['version_commit'] = sha
+            if changes[key] is not None:
+                row['last_change'] = dict(changes[key])
+                commit_ref(row['last_change'], sha)
+            else:
+                commit_ref(row, sha)
+            if sha in source_data:
+                row['source_links'] = [dict(link) for link in source_data[sha]]
+                row['sources'] = [link['url'] for link in source_data[sha]]
+                official.extend(f"{sha} {link['key']}: {link['url']}" for link in source_data[sha])
+        if official:
+            text += '\n\nOfficial sources of recorded version commits (not necessarily the entire current act):\n' + '\n'.join(list(dict.fromkeys(official))[:20])
     if tool == 'law_details':
         for change in data.get('changes', []):
             if 'provision_files' in change:

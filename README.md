@@ -35,6 +35,8 @@ Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je in
 
 SQLite dodatno čuva kompaktan katalog akata: vrstu i putanju akta, naziv iz postojećeg Global Law kataloga, poznate srpske skraćenice, identifikator objave iz putanje (godina, broj i stavka kada su jednoznačno kodirani), broj člana, zaglavlje i kontekst zaglavlja. Ovi podaci se vraćaju kao `serbia_metadata` u rezultatima FTS pretrage. Identifikator putanje nije potvrda službenog glasnika niti datuma stupanja na snagu; za to se koristi upstream istorija. Otisak naziva iz kataloga takođe ulazi u ključ indeksa. Ne kopiraju se Git istorija, datumi važenja, izmene, niti službeni izvori, jer ih Global Law već indeksira.
 
+`search_law` (FTS i istorijska Git pretraga) uz `file_url` vraća `version_commit`, `last_change` (uključujući datum stupanja na snagu i objave) i `source_links`/`sources` iz odgovarajućeg commita, kada su dostupni. `Source` označava izvor izmene, a `Consolidated` verziju teksta. Poruke jedinstvenih commitova sa strane rezultata čitaju se grupno i keširaju po SHA; FTS indeks ostaje nepromenjen.
+
 Ručna obnova: **Actions → Serbia MCP CI and deployment → Run workflow → force_rebuild_index**. Na `main` obnavlja i indeks na test serveru, čak i ako je isti commit već deployovan. Lokalno: `python tools/serbia_fts.py --force`. Nova baza se objavljuje atomarno tek nakon izgradnje; neuspeh ostavlja prethodnu.
 
 ## Benchmark pretrage
