@@ -285,7 +285,9 @@ def _search_law(args):
 
 def search_law(args):
     text, data = _search_law(args)
-    if data.get('date', '') < upstream.law.day('today') and data.get('page', {}).get('total') == 0:
+    date = data.get('date') or upstream.date_arg(args.get('date'))
+    empty = data.get('page', {}).get('total') == 0 or ('page' not in data and data.get('results') == [])
+    if date < upstream.law.day('today') and empty:
         note = ('Nema rezultata u dostupnom korpusu; ukinuti propisi i ranije verzije mogu nedostajati. '
                 'To ne dokazuje da propis ili odgovarajuća odredba nisu postojali.')
         text += '\n' + note

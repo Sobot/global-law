@@ -86,6 +86,10 @@ class SerbiaProfileTest(unittest.TestCase):
             text, empty = serbia_profile.search_law({'date': '2010-12-31'})
         self.assertIn('ne dokazuje', text)
         self.assertTrue(empty['caveats'])
+        with patch.object(serbia_profile, '_search_law', return_value=('none', {'results': [], 'left_out': []})):
+            text, empty = serbia_profile.search_law({'date': '1700-01-01'})
+        self.assertIn('ne dokazuje', text)
+        self.assertTrue(empty['caveats'])
         with patch.object(serbia_profile, '_search_law',
                           return_value=('found', {'date': '2010-12-31', 'page': {'total': 1}, 'caveats': []})):
             text, found = serbia_profile.search_law({'date': '2010-12-31', 'offset': 10})
