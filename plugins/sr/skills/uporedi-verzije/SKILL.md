@@ -1,9 +1,9 @@
 ---
 name: uporedi-verzije
-description: Uporedi dve verzije srpskog propisa ili člana i utvrdi šta je konkretna izmena dodala, obrisala, zamenila ili prenumerisala.
+description: Упореди две верзије српског прописа или члана и утврди шта је конкретна измена додала, обрисала, заменила или пренумерисала.
 ---
 
-1. Utvrdi propis, obuhvat i dva datuma. Kada korisnik navede samo broj službenog glasila, pronađi odgovarajući akt o izmeni i proveri datum kada je konkretna odredba stupila na snagu. Kao početnu verziju uzmi tekst neposredno pre te promene.
-2. Za jedan član na istoj putanji koristi `compare_dates` sa `path`, `date_a` i `date_b`. Za ceo akt počni pregledom pogođenih odredaba. Za konkretnu izmenu koristi `law_details` sa identifikatorom izmene iz rezultata. Ako je pregled skraćen, suzi obuhvat ili označi koje su odredbe proverene.
-3. Otvori obe verzije pomoću `read_law`. Ako je član promenio broj ili putanju, pronađi njegov prethodni i novi tekst zasebno. Isti broj člana u dva zakona nije dovoljan dokaz kontinuiteta.
-4. Za svaku materijalnu promenu prikaži kratko „pre“, „posle“ i posledicu koju tekst podržava. Označi čisto redakcijske izmene. Priloži datume i službene izvore kada postoje, uz `file_diff_url` za konkretnu izmenu člana, `commit_url` za akt o izmeni ili `file_url` za pune tekstove, prema pitanju. Koristi samo vraćene linkove. Ako jedna verzija nedostaje, označi poređenje kao delimično.
+1. Утврди пропис, обухват и два датума. Када корисник наведе само број службеног гласила, пронађи одговарајући акт о измени и провери датум када је конкретна одредба ступила на снагу. Као почетну верзију узми текст непосредно пре те промене.
+2. За један члан на истој путањи користи `compare_dates` са `path`, `date_a` и `date_b`. За цео акт почни прегледом погођених одредаба. За конкретну измену користи `law_details` са идентификатором измене из резултата. Ако је преглед скраћен, сузи обухват или означи које су одредбе проверене.
+3. Отвори обе верзије помоћу `read_law`. Ако је члан променио број или путању, пронађи његов претходни и нови текст засебно. Исти број члана у два закона није довољан доказ континуитета.
+4. За сваку материјалну промену прикажи кратко „пре“, „после“ и последицу коју текст подржава. Означи чисто редакцијске измене. Приложи датуме и службене изворе када постоје, уз `file_diff_url` за конкретну измену члана, `commit_url` за акт о измени или `file_url` за пуне текстове, према питању. Користи само враћене линкове. Ако једна верзија недостаје, означи поређење као делимично.

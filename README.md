@@ -1,65 +1,105 @@
-# Zakon — MCP za propise Republike Srbije
+# Git for Global Law
 
-Pitajte asistenta kako glasi član zakona, koji je tekst važio na određeni datum ili šta se promenilo između dve verzije. Odgovor možete proveriti preko linka na tekst člana u odgovarajućoj verziji ili na izmenu koja ga je uvela.
+**The world's law in one git history. Every word traced to the law that wrote it for any country and any date.**
 
-## Povezivanje
+An expansion of the same for the US Code, [#1 on Hacker News (28/10/26)](https://news.ycombinator.com/item?id=50268380).
+Semantic, searchable law on a global scale.
 
-U klijentu koji podržava udaljene MCP servere dodajte konektor sa sledećim podacima.
+https://github.com/user-attachments/assets/f24f3411-24d9-416a-8c45-9cebc817c64e
 
-| Polje | Vrednost |
-| --- | --- |
-| Naziv | `zakon` |
-| Opis | Pretraga važećih i istorijskih propisa Republike Srbije sa referencama na članove, verzije i izmene. |
-| Test MCP URL | `https://d38cy0uwrxlk77.cloudfront.net/mcp` |
-| Transport | Streamable HTTP |
+**Free to use: [CC0](LICENSE.md).** Fork it, build on it, ship it in a product: no permission or credit needed. The law text
+sits in each country's repository, under that repository's own terms.
 
-## Šta možete da pitate
+Each body of law is its own repository: a country's law (`lexifina/germany-law`), a state's or a city's
+(`lexifina/germany-brandenburg-law`), or a court's decisions (`lexifina/germany-bgh-caselaw`). In a dated history every
+commit is one law taking effect, written by that law; in case law, one decision on the day it was decided. Where the
+publisher keeps only today's text, or each law as first enacted, the corpus says so (`history` in `manifest.json`).
+This repository holds them all as submodules, arranged by jurisdiction, and moves each one forward to its latest
+commit. The tools read the `In-force` date of every commit, so they give the law of any country on any date that its
+record covers.
 
-> @zakon Kako je glasio cl. 21 st. 1 ZKP 29. maja 2019? Daj mi link na izvor.
+For Serbia, a provision's status before the first available version may be unknown. When `read_law` reports a later
+first-publication year from an act's path, that year is not its enactment or commencement date and does not rule out
+retroactive effect. Predecessor acts and equivalent provisions are not automatically linked; repealed acts and earlier
+versions may be missing. An empty historical search does not prove that they never existed. Check official publications
+and search earlier acts by title and subject, as article numbers and wording may differ.
 
-Konektor prepoznaje oznaku člana i kada je upišete bez kvačica. U ovom primeru pronalazi Zakonik o krivičnom postupku i vraća [član 21 „Sastav sudskih veća“ u verziji za 29. maj 2019.](https://github.com/lexifina/serbia-law/blob/09019e8e6a8d73d50b8dfe9a647642cfe35761f7/zakon/2011/72-3/clan-021.md). Link vodi na ceo član. Prilikom citiranja pojedinačnog stava ili tačke proverite njihove granice u tekstu.
-
-> @zakon Упореди члан 21 ЗКП како је гласио 28. и 29. маја 2019. Прикажи само шта се променило и дај линкове на обе верзије.
-
-> @zakon Koja izmena ZKP-a je objavljena u „Sl. glasniku RS“, br. 35/2019? Daj mi link na izmenu.
-
-Treći primer koristi broj glasila da pronađe [komit sa izmenom](https://github.com/lexifina/serbia-law/commit/09019e8e6a8d73d50b8dfe9a647642cfe35761f7). Za pitanje o važenju navedite i datum koji vas zanima. Ako za taj period nedostaje tekst, odgovor treba da navede granicu dostupne istorije.
-
-Za tematsku pretragu različitih padežnih oblika može se uključiti `search_law(query="naknada štete", morphology=true)`. To je opciona, približna pretraga kratkih fraza (1–3 reči), bez spoljnog API-ja. Redovna pretraga, citati i istorija ostaju nepromenjeni. Rezultati sadrže originalni tekst, ne generisane oblike.
-
-### Lokalni indeks pretrage
-
-Pretraga celog srpskog korpusa na današnji datum koristi SQLite FTS5 kada je indeks spreman. Ćirilica, latinica i latinica bez dijakritika imaju zajedničku normalizaciju; `morphology=true` koristi zasebnu kolonu korena reči. Istorijski, regex, case-sensitive i uži upiti i dalje koriste Git. FTS čuva indeks i lokacije redova, bez dupliranja originalnog teksta; relevantni originalni redovi čitaju se iz Git blobova.
-
-`python tools/serbia_fts.py` gradi indeks u `.git/global-law-cache/serbia-fts/`. Ključ je Git tree teksta koji danas važi i hash implementacije normalizacije i indeksiranja, ne SHA aplikacije. CI ga kešira, a test server ga ponovo koristi iz trajnog lokalnog keša. Novi indeks nastaje samo ako se promeni efektivni sadržaj ili implementacija; binarna baza se ne komituje. Dok se prvi indeks gradi, server ostaje dostupan preko Git pretrage.
-
-SQLite dodatno čuva kompaktan katalog akata: vrstu i putanju akta, naziv iz postojećeg Global Law kataloga, poznate srpske skraćenice, identifikator objave iz putanje (godina, broj i stavka kada su jednoznačno kodirani), broj člana, zaglavlje i kontekst zaglavlja. Ovi podaci se vraćaju kao `serbia_metadata` u rezultatima FTS pretrage. Identifikator putanje nije potvrda službenog glasnika niti datuma stupanja na snagu; za to se koristi upstream istorija. Otisak naziva iz kataloga takođe ulazi u ključ indeksa. Ne kopiraju se Git istorija, datumi važenja, izmene, niti službeni izvori, jer ih Global Law već indeksira.
-
-`search_law` (FTS i istorijska Git pretraga) uz `file_url` vraća `version_commit`, `last_change` (uključujući datum stupanja na snagu i objave) i `source_links`/`sources` iz odgovarajućeg commita, kada su dostupni. `Source` označava izvor izmene, a `Consolidated` verziju teksta. Poruke jedinstvenih commitova sa strane rezultata čitaju se grupno i keširaju po SHA; FTS indeks ostaje nepromenjen.
-
-Uz službeni izvor, datirani rezultati mogu vratiti tri GitHub reference: `file_url` (ceo tekst verzije), `commit_url` (akt o izmeni i traileri) i `file_diff_url` (direktno na diff člana u commitu, samo kada je sadržaj promenjen ili dodat). Asistent bira najrelevantniju referencu prema pitanju.
-
-Ručna obnova: **Actions → Serbia MCP CI and deployment → Run workflow → force_rebuild_index**. Na `main` obnavlja i indeks na test serveru, čak i ako je isti commit već deployovan. Lokalno: `python tools/serbia_fts.py --force`. Nova baza se objavljuje atomarno tek nakon izgradnje; neuspeh ostavlja prethodnu.
-
-## Benchmark pretrage
-
-Lokalni `tools/serbia_benchmark.py` meri Recall@K, Hit@K, MRR@K i trajanje pretrage na istom datumu i Git pinu. Ne ocenjuje pravno tumačenje. Koristi postojeća [pitanja srb-legal-rag](https://github.com/RatkoNikolic/srb-legal-rag/tree/bd839dc35da24250268e9c95b93d5834ad8ba828/goldens) autora Ratka Nikolića (CC BY 4.0); originalni skup nije kopiran u ovaj repozitorijum.
-
-```sh
-git clone https://github.com/RatkoNikolic/srb-legal-rag.git ../srb-legal-rag
-git -C ../srb-legal-rag checkout bd839dc35da24250268e9c95b93d5834ad8ba828
-python tools/serbia_benchmark.py ../srb-legal-rag/goldens/golden-situational-60.jsonl --date 2026-11-22 --k 10
-python tools/serbia_benchmark.py tests/serbia/morphology-benchmark.jsonl --date 2019-05-29 --k 10
+```
+global-law/
+├── manifest.json                       every corpus: path, repository, history, coverage and dates
+├── jurisdiction.json                   the world, and the jurisdictions in it
+├── germany/bund/acts/                  a country's law (submodule: lexifina/germany-law)
+├── germany/brandenburg/acts/           a state's
+├── argentina/buenos-aires/salto/acts/  a city's
+├── germany/bgh/caselaw/                a court's decisions
+├── tools/                              law.py, the MCP server, countries.py
+└── …
 ```
 
-Potreban je postojeći checkout srpskog korpusa sa istorijom. Neusaglašeni identifikatori, nedostajući članci i greške prijavljuju se odvojeno. Rezultati nisu direktno uporedivi sa RAG benchmarkom tačnosti odgovora. Duga situaciona pitanja se ne prepravljaju u ključne reči; morfološko proširenje se posebno proverava kratkim frazama u jediničnim testovima.
+## Questions as commands
 
-## Uputstva za asistente
+| Question | Command |
+| --- | --- |
+| Every change to 11 U.S.C. §1182, with the law that made each | `python3 tools/law.py log united-states/federal/usc/title-11/1182.md` |
+| Which law wrote each line of it today? | `python3 tools/law.py blame 2026-01-01 united-states/federal/usc/title-11/1182.md` |
+| §1182 as in force on 1 May 2022 | `python3 tools/law.py show 2022-05-01 united-states/federal/usc/title-11/1182.md` |
+| What changed between two dates | `python3 tools/law.py diff 2022-05-01 2022-07-01 united-states/federal/usc/title-11/1182.md` |
+| The last law in force in every country on a day | `python3 tools/law.py world 1990-10-03` |
 
-Paket sadrži [tri uputstva (skills)](plugins/sr/skills/) za citiranje odredbe, utvrđivanje teksta koji je važio na određeni datum i poređenje verzija. Server ih izlaže kao MCP resurse koje klijent može da pročita.
+Each corpus is also a plain git repository (`git -C united-states/federal/usc log -- title-11/1182.md`); the tools order
+versions by their `In-force` date, which matters where a record was not committed in that order.
 
-## Poreklo projekta i licenca
+**Outside git**, we also host this record publicly, for free:
 
-Ovaj server je srpska adaptacija projekta [Global Law](https://github.com/lexifina/global-law). Tekstovi propisa i istorija izmena dolaze iz [korpusa za Srbiju](https://github.com/lexifina/serbia-law). Dokumentacija izvornog projekta opisuje [zajedničke alate i komande](FEATURES.md) i [globalni MCP interfejs](MCP.md).
+- **[Ask Claude about the law](https://global-law.lexifina.com/v1/try_claude)**: opens Claude with a first question ready.
+- **[Ask ChatGPT](https://global-law.lexifina.com/v1/try_chatgpt)**: the same question in ChatGPT.
+- **[Search the law on our site](https://lexifina.com/law?country=united-states&q=small+business+debtor)**: a search of US
+  law for "small business debtor", with each provision's text and its versions, no account needed; choose any country
+  there.
+- **[Developer REST API](https://global-law.lexifina.com/v1/search_law?query=small+business+debtor&jurisdiction=united-states)**:
+  the same search as JSON, with no key. See the [documentation here](https://lexifina.com/api/global-law).
 
-Ovaj repozitorijum je objavljen pod [CC0](LICENSE.md). Za tekstove propisa važe uslovi navedeni u repozitorijumu korpusa.
+Both assistants read the record through the free Global law connector (MCP, `https://global-law.lexifina.com/mcp`);
+the first time, the chat gives you the link that adds it. Ask in any language; for one country, add `?country=romania`
+to either link.
+
+**Host it yourself easily.** All it takes is git and Python, and the tools run on your machine:
+
+```sh
+git clone --depth 1 https://github.com/lexifina/global-law && cd global-law
+python3 tools/countries.py add united-states/federal/usc
+python3 tools/law.py show 2022-05-01 united-states/federal/usc/title-11/1182.md
+```
+
+Opened in Claude Code, Cursor, VS Code or Codex, the clone also starts a local MCP server with the same tools
+([MCP.md](MCP.md)). [FEATURES.md](FEATURES.md) lists every command and [FAQ.md](FAQ.md) how to clone.
+
+## Case law
+
+[Court decisions](FAQ.md#is-case-law-included) sit beside the law, one commit per decision on the day it was decided
+([`switzerland/bund/caselaw`](https://github.com/lexifina/switzerland-caselaw)), and are added on their own: `python3
+tools/countries.py add switzerland/caselaw`. A decision is a ruling, not a law (`Kind: court`), so the tools leave it
+out of everything about law unless you name it. [`check_precedent`](FEATURES.md#check_precedent-mcpcheck_precedent) says
+whether the text a decision applied is still in force, and
+[`resolve_citations`](FEATURES.md#resolve_citations-mcpresolve_citations) reads citations in each country's usual form
+(`§ 823 Abs. 1 BGB`, `article 1240 du code civil`). [`manifest.json`](manifest.json) gives each court's coverage.
+
+## More
+
+- [FEATURES.md](FEATURES.md): every feature, and what every corpus here must support (`git blame`, `law.py`, the MCP tools)
+- [FAQ.md](FAQ.md): questions and answers · [CONTRIBUTING.md](CONTRIBUTING.md): proposing changes · [MCP.md](MCP.md): the MCP server · [REPRODUCE.md](REPRODUCE.md): how it was built · [CHANGELOG.md](CHANGELOG.md)
+- [FRESHNESS.md](FRESHNESS.md): how current each corpus is · [Monitoring](monitoring/): whether updates are running · [WATCHING.md](WATCHING.md): how each official source is watched for changes
+- [Performance](performance/): how fast the tools answer on your own clone, a one-time indicator · [Tests](tests/): what is checked, run with `python -m unittest discover -s tests`
+- [Visualisations](visualisations/): charts and bridges across the world's law
+- [Vulnerabilities](vulnerabilities/): mistakes in legislation as published
+- [Videos](videos/): every video demonstrating what global-law does, from its features and one country's law to the archive on one date and how updates are checked
+
+## Videos
+
+https://github.com/user-attachments/assets/6020acb1-53f3-4b65-94a4-fe132b867358
+
+https://github.com/user-attachments/assets/6119b018-5f5b-4bab-a2da-0aad30ef585f
+
+## License
+
+This repository is [CC0](LICENSE.md). The law text is in each country's repository, under that repository's own terms.
