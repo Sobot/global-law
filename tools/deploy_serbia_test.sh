@@ -115,7 +115,6 @@ test "$(git ls-tree HEAD "$corpus" | awk '{print $3}')" = "$corpus_sha"
 new_started=true
 docker run -d --restart unless-stopped --name "$name" \
   --memory 1600m --memory-swap 3500m -p 127.0.0.1:8080:8080 \
-  -e SERBIA_LAW_GREP_THREADS=2 -e SERBIA_LAW_WARM_PACKS=1 \
   --label "serbia.source=$source_sha" --label "serbia.corpus=$corpus_sha" \
   --mount "type=bind,src=$repo,dst=/app,readonly" \
   --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
