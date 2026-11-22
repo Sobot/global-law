@@ -77,7 +77,7 @@ jobs:
           IMAGE: ${{ steps.image.outputs.name }}
         run: |
           cache="$PWD/.git/global-law-cache"
-          sudo install -d -o 10001 -g 10001 -m 0755 "$cache"
+          sudo install -d -o 10001 -g "$(id -g)" -m 0775 "$cache"
           key=$(docker run --rm \
             --mount "type=bind,src=$PWD,dst=/app,readonly" \
             --mount "type=bind,src=$cache,dst=/app/.git/global-law-cache" \
