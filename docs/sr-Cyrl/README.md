@@ -1,7 +1,7 @@
 <!-- upstream: README.md @ 8a81ec4d2256a865f829e97102652a8b52aa0641 -->
 # Git за светско право
 
-> Превод оригинала [README.md](../../README.md) на српски. Измене специфичне за српско издање означене су као „Напомена за српско издање“ и описане у [SRBIJA.md](SRBIJA.md).
+> Превод оригинала [README.md](../../README.md) на српски.
 
 **Право целог света у једној git историји. Свака реч праћена до закона који ју је написао, за било коју земљу и било
 који датум.**
@@ -29,7 +29,7 @@ https://github.com/user-attachments/assets/f24f3411-24d9-416a-8c45-9cebc817c64e
 Празна историјска претрага не доказује да нису постојали. Проверите службене објаве и претражите раније прописе по
 називу и теми, јер се бројеви чланова и формулације могу разликовати.
 
-> **Напомена за српско издање:** овај fork (Sobot/global-law) покрива само Србију: преузет је само `serbia/national/acts` (подмодул lexifina/serbia-law), а подмодули осталих земаља су уклоњени. Српски тест сервер налази се на `https://d38cy0uwrxlk77.cloudfront.net/mcp`. Детаљи су у [SRBIJA.md](SRBIJA.md).
+> Овај клон укључује јавни корпус прописа Србије као подмодул `serbia/national/acts`. Сервер може да чита и друге корпусе када их додате са `python3 tools/countries.py add <country>`.
 
 ```
 global-law/
@@ -58,8 +58,6 @@ global-law/
 | Шта се променило између два датума | `python3 tools/law.py diff 2022-05-01 2022-07-01 united-states/federal/usc/title-11/1182.md` |
 | Последњи закон на снази у свакој земљи на одређени дан | `python3 tools/law.py world 1990-10-03` |
 | Члан 21 закона из „Службеног гласника РС“ бр. 72/2011 како је гласио 29. маја 2019. | `python3 tools/law.py show 2019-05-29 serbia/national/acts/zakon/2011/72-3/clan-021.md` |
-
-> **Напомена за српско издање:** последњи ред табеле је српски пример додат у овом fork-у; амерички примери раде тек када додате тај корпус (`python3 tools/countries.py add united-states/federal/usc`). Српски тест сервер је на `https://d38cy0uwrxlk77.cloudfront.net/mcp` (Streamable HTTP, конектор `zakon`); јавни сервер `https://global-law.lexifina.com/mcp` и везе испод припадају upstream-у и покривају цео свет. У овом fork-у `.vscode/mcp.json` повезује VS Code са удаљеним тест сервером `zakon`, а не са локалним сервером.
 
 Сваки корпус је и обичан git репозиторијум (`git -C united-states/federal/usc log -- title-11/1182.md`); алати ређају
 верзије по њиховом `In-force` датуму, што је важно тамо где евиденција није комитована тим редоследом.
@@ -99,8 +97,6 @@ tools/countries.py add switzerland/caselaw`. Одлука је пресуда, �
 каже да ли је текст који је одлука применила још увек на снази, а
 [`resolve_citations`](FEATURES.md#resolve_citations-mcpresolve_citations) чита цитате у уобичајеном облику сваке земље
 (`§ 823 Abs. 1 BGB`, `article 1240 du code civil`). [`manifest.json`](../../manifest.json) даје покривеност сваког суда.
-
-> **Напомена за српско издање:** за Србију нема судске праксе, а алати `check_precedent` и `world_on_date` сакривени су у српском профилу сервера.
 
 ## Више
 

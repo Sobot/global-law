@@ -10,9 +10,11 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
 LEGACY_CORPORA = {'gb/uk/send': 'gb/uk/legislation'}  # the UK corpus's path before it held all UK legislation
@@ -109,6 +111,125 @@ class Server:
         self.proc.wait(timeout=30)
         self.proc.stdout.close()
         self.proc.stderr.close()
+
+
+class GenericLauncher(unittest.TestCase):
+    def test_stdio_launcher_uses_generic_engine(self):
+        request = {'jsonrpc': '2.0', 'id': 1, 'method': 'initialize',
+                   'params': {'protocolVersion': '2025-06-18', 'capabilities': {}}}
+        result = subprocess.run(['sh', str(ROOT / 'tools/mcp.sh')], cwd=ROOT, input=json.dumps(request) + '\n',
+                                text=True, capture_output=True, timeout=30,
+                                env={**os.environ, 'GLOBAL_LAW_JURISDICTIONS': 'serbia'})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        reply = json.loads(result.stdout.splitlines()[0])
+        self.assertEqual(reply['result']['serverInfo']['name'], 'global-law')
+        instructions = reply['result']['instructions']
+        self.assertIn('Global law:', instructions)
+        self.assertIn("publisher's page, never this server, its repository or an archived copy; "
+                      "say what that page shows (this provision on the date, the act as in force then, or today's text only). "
+                      'If the requested date is outside the record, do not claim to know the text.', instructions)
+        for field in ('file_url', 'file_diff_url', 'commit_url'):
+            self.assertNotIn(field, instructions)
+
+    def test_optional_engine_hooks_prepare_arguments_and_enrich_results(self):
+        sys.path.insert(0, str(ROOT / 'tools'))
+        import mcp_server as engine
+
+        seen = {}
+
+        def handler(args):
+            seen.update(args)
+            return 'base result', {'summary': 'base result'}
+
+        def prepare(name, args):
+            return {**args, 'jurisdiction': 'example'}
+
+        def enrich(name, text, data):
+            return text + ' enriched', {**data, 'extension_applied': True}
+
+        message = {'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                   'params': {'name': 'extension_test', 'arguments': {}}}
+        with patch.object(engine, 'warmed', lambda: None), \
+                patch.dict(engine.HANDLERS, {'extension_test': handler}), \
+                patch.dict(engine.PROPERTIES, {'extension_test': ['jurisdiction']}), \
+                patch.object(engine, 'prepare_tool_arguments', prepare), \
+                patch.object(engine, 'enrich_tool_result', enrich):
+            reply = engine.handle(message)['result']
+
+        self.assertEqual(seen, {'jurisdiction': 'example'})
+        self.assertTrue(reply['structuredContent']['extension_applied'])
+        self.assertEqual(reply['content'][0]['text'], 'base result enriched')
+
+    def test_data_root_can_be_separate_from_engine_code(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tools = Path(temporary) / 'engine' / 'tools'
+            tools.mkdir(parents=True)
+            for name in ('law.py', 'mcp_server.py', 'skill_resources.py', 'usc_cite.py'):
+                shutil.copyfile(ROOT / 'tools' / name, tools / name)
+            code = (
+                'import json, mcp_server; '
+                'print(json.dumps({"root": str(mcp_server.ROOT), "engine": mcp_server.__file__, '
+                '"law": mcp_server.law.__file__, "corpora": [c["path"] for c in mcp_server.law._whole_manifest()["corpora"]], '
+                '"gitlink": mcp_server.law.git("ls-tree", "HEAD", "--", "serbia/national/acts").strip()}))'
+            )
+            result = subprocess.run([sys.executable, '-c', code], cwd=temporary, text=True, capture_output=True,
+                                    env={**os.environ, 'GLOBAL_LAW_ROOT': str(ROOT), 'PYTHONPATH': str(tools)})
+            default_env = {**os.environ, 'PYTHONPATH': str(tools)}
+            default_env.pop('GLOBAL_LAW_ROOT', None)
+            default = subprocess.run([sys.executable, '-c', 'import mcp_server; print(mcp_server.ROOT)'],
+                                     cwd=ROOT, text=True, capture_output=True, env=default_env)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        data = json.loads(result.stdout)
+        self.assertEqual(data['root'], str(ROOT.resolve()))
+        self.assertEqual(Path(data['engine']).parent, tools)
+        self.assertEqual(Path(data['law']).parent, tools)
+        self.assertIn('serbia/national/acts', data['corpora'])
+        self.assertRegex(data['gitlink'], r'^160000 commit [0-9a-f]{40}\tserbia/national/acts$')
+        self.assertEqual(default.returncode, 0, default.stderr)
+        self.assertEqual(default.stdout.strip(), str(tools.parent.resolve()))
+
+    def test_invalid_data_root_fails_clearly(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            no_git = Path(temporary) / 'not-a-checkout'
+            no_git.mkdir()
+            (no_git / 'manifest.json').write_text('{}', encoding='utf-8')
+            broken_git = Path(temporary) / 'broken-gitdir'
+            (broken_git / '.git').mkdir(parents=True)
+            (broken_git / 'manifest.json').write_text('{"corpora": []}', encoding='utf-8')
+            invalid_roots = (
+                ('relative/path', 'GLOBAL_LAW_ROOT must be an absolute path'),
+                (temporary, 'GLOBAL_LAW_ROOT must contain manifest.json'),
+                (str(no_git), 'GLOBAL_LAW_ROOT must be a Git checkout'),
+                (str(broken_git), 'GLOBAL_LAW_ROOT must be the root of a usable Git worktree'),
+            )
+            for value, message in invalid_roots:
+                result = subprocess.run(
+                    [sys.executable, '-c', 'import law'], cwd=ROOT, text=True, capture_output=True,
+                    env={**os.environ, 'GLOBAL_LAW_ROOT': value, 'PYTHONPATH': str(ROOT / 'tools')})
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_linked_worktree_is_a_valid_data_root(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            repository = Path(temporary) / 'repository'
+            repository.mkdir()
+            linked = Path(temporary) / 'linked'
+            env = {**os.environ, 'GIT_AUTHOR_NAME': 'Test', 'GIT_AUTHOR_EMAIL': 'test@example.org',
+                   'GIT_COMMITTER_NAME': 'Test', 'GIT_COMMITTER_EMAIL': 'test@example.org'}
+            subprocess.run(['git', 'init', '-q', '-b', 'main'], cwd=repository, env=env, check=True)
+            (repository / 'manifest.json').write_text('{"corpora": []}\n', encoding='utf-8')
+            subprocess.run(['git', 'add', 'manifest.json'], cwd=repository, env=env, check=True)
+            subprocess.run(['git', '-c', 'user.name=Test', '-c', 'user.email=test@example.org',
+                            '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'Initial manifest'],
+                           cwd=repository, env=env, check=True)
+            subprocess.run(['git', 'worktree', 'add', '-q', '--detach', str(linked), 'HEAD'],
+                           cwd=repository, env=env, check=True)
+            self.assertTrue((linked / '.git').is_file())
+            result = subprocess.run([sys.executable, '-c', 'import law; print(law.ROOT)'],
+                                    cwd=ROOT, text=True, capture_output=True,
+                                    env={**os.environ, 'GLOBAL_LAW_ROOT': str(linked), 'PYTHONPATH': str(ROOT / 'tools')})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), str(linked.resolve()))
 
 
 class McpServer(unittest.TestCase):
@@ -1158,7 +1279,7 @@ class ScopeRules(unittest.TestCase):
 class Launching(unittest.TestCase):
     """Every client's project config starts the server from any folder of the clone, on any platform."""
 
-    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.codex/config.toml')
+    CONFIGS = ('.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', '.codex/config.toml')
 
     def entry(self, config: str) -> dict:
         text = (ROOT / config).read_text(encoding='utf-8')
@@ -1178,12 +1299,7 @@ class Launching(unittest.TestCase):
                                       input=b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n',
                                       capture_output=True, timeout=120)
                 reply = json.loads(proc.stdout.decode('utf-8').splitlines()[0])
-                self.assertEqual(reply['result']['serverInfo']['name'], 'serbia-law-mcp', proc.stderr[-300:])
-
-    def test_vscode_connects_to_the_serbian_test_server(self):
-        servers = json.loads((ROOT / '.vscode/mcp.json').read_text(encoding='utf-8'))['servers']
-        plugin = json.loads((ROOT / 'plugins/sr/mcp.json').read_text(encoding='utf-8'))['mcpServers']['zakon']
-        self.assertEqual(servers, {'zakon': {'type': 'http', 'url': plugin['url']}})
+                self.assertEqual(reply['result']['serverInfo']['name'], 'global-law', proc.stderr[-300:])
 
     def test_claude_code_approves_the_server(self):
         settings = json.loads((ROOT / '.claude/settings.json').read_text(encoding='utf-8'))
@@ -4921,23 +5037,25 @@ class SerbianInLatinLetters(unittest.TestCase):
         self.assertEqual(m.regex_fragments('годишњ(и|ег) одмор'), [['годишњ', 'одмор']])
         self.assertIsNone(m.regex_fragments('第九条'))
 
-    def test_cyrillic_first_then_as_typed(self):
+    def test_public_search_finds_serbian_corpus_from_latin_query(self):
         from unittest import mock
         m = self.m
         asked = []
 
         def handler(args):
             asked.append(args['query'])
-            held = {'годишњи одмор': ['a.md'], 'annual leave': ['b.md']}.get(args['query'], [])
+            held = {'годишњи одмор': ['serbia/national/acts/zakon/2005/24-3/clan-073.md'],
+                    'annual leave': ['other/annual-leave.md']}.get(args['query'], [])
             return f'{len(held)} found', {'results': held}
         run = m.in_cyrillic('search_law', handler)
         with mock.patch.object(m, 'cyrillic_first', lambda args: True):
             text, data = run({'query': 'godišnji odmor', 'jurisdiction': 'serbia'})
-            self.assertEqual((data['results'], data['query_as'], asked), (['a.md'], 'годишњи одмор', ['годишњи одмор']))
+            self.assertEqual((data['results'], data['query_as'], asked),
+                             (['serbia/national/acts/zakon/2005/24-3/clan-073.md'], 'годишњи одмор', ['годишњи одмор']))
             self.assertTrue(text.startswith("Searched as 'годишњи одмор'") and data['script_note'] in text)
             del asked[:]  # words that are not Serbian: asked in Cyrillic, nothing found, then as typed
             text, data = run({'query': 'annual leave'})
-            self.assertEqual((data, asked), ({'results': ['b.md']}, ['аннуал леаве', 'annual leave']))
+            self.assertEqual((data, asked), ({'results': ['other/annual-leave.md']}, ['аннуал леаве', 'annual leave']))
             del asked[:]  # Cyrillic, a pattern, a letter Serbian does not use: as typed
             for args in ({'query': 'годишњи одмор'}, {'query': 'godišnji', 'regex': True}, {'query': 'query'}):
                 run(dict(args))

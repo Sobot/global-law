@@ -72,6 +72,7 @@ class Tree:
         run('config', 'core.autocrlf', 'false', cwd=self.root)
         (self.root / 'tools').mkdir()
         shutil.copy(HERE / 'tools' / 'law.py', self.root / 'tools' / 'law.py')
+        shutil.copy(HERE / 'tools' / 'skill_resources.py', self.root / 'tools' / 'skill_resources.py')  # mcp_server.py imports it
         shutil.copy(HERE / 'tools' / 'usc_cite.py', self.root / 'tools' / 'usc_cite.py')  # mcp_server.py imports it
         shutil.copy(HERE / 'tools' / 'freshness.py', self.root / 'tools' / 'freshness.py')
         (self.root / 'manifest.json').write_text(json.dumps({'corpora': []}), encoding='utf-8')

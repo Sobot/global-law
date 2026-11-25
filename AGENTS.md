@@ -5,8 +5,8 @@ use the `global-law` MCP server's tools rather than reading the files or running
 force on a date, credit each change to the law that made it, and state where each record starts and ends.
 
 - **Starting it.** Clients that read project config start it from this clone: Claude Code (`.mcp.json`), Cursor
-  (`.cursor/mcp.json`) and Codex (`.codex/config.toml`, in a trusted project); VS Code (`.vscode/mcp.json`) connects
-  to the remote Serbian test server `zakon` instead. Each local one runs `tools/mcp.sh` through git, which needs only Python 3.9 or newer. If the tools are missing, ask the user to enable
+  (`.cursor/mcp.json`), VS Code (`.vscode/mcp.json`) and Codex (`.codex/config.toml`, in a trusted project). Each one
+  runs `tools/mcp.sh` through git, which needs only Python 3.9 or newer. If the tools are missing, ask the user to enable
   the `global-law` server (in Claude Code, `/mcp`); `sh tools/mcp.sh` starts it by hand on stdin and stdout.
 - **Using it.** Start with `list_jurisdictions`, then `find_provision` for a path, then `read_law`. Some questions have
   their own tool: what relies on a provision (`what_else_changes`), which text applies to a case (`applies_to_case`),
