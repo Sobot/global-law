@@ -12,6 +12,35 @@ import serbia_fts as fts
 
 
 class SerbiaFTSTest(unittest.TestCase):
+    def test_future_effective_tree_reuses_then_rebuilds(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            repo = root / fts.CORPUS
+            repo.mkdir(parents=True)
+            subprocess.run(['git', 'init', '-q', str(repo)], check=True)
+            provision = repo / 'act.md'
+
+            def tree(text):
+                provision.write_text(text, encoding='utf-8')
+                subprocess.run(['git', 'add', 'act.md'], cwd=repo, check=True)
+                return subprocess.check_output(['git', 'write-tree'], cwd=repo, text=True).strip()
+
+            before = tree('Годишњи одмор')
+            future = tree('Накнада штете')
+            date = ['2029-12-31']
+            with patch.object(fts.mcp, 'ROOT', root), \
+                 patch.object(fts.mcp.law, '_store', return_value=root / 'cache'), \
+                 patch.object(fts.mcp.law, 'day', side_effect=lambda _: date[0]), \
+                 patch.object(fts.mcp, 'tree_on', side_effect=lambda day, _: before if day < '2030-01-01' else future), \
+                 patch.object(fts, 'current_catalog', return_value=({}, '')):
+                first = fts.build()
+                self.assertEqual(fts.build(), first)
+                date[0] = '2030-01-01'
+                second = fts.build()
+                self.assertNotEqual(first, second)
+                with sqlite3.connect(second) as db:
+                    self.assertEqual(db.execute("SELECT count(*) FROM fts WHERE fts MATCH 'naknada'").fetchone()[0], 1)
+
     def test_build_cache_is_content_addressed(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
