@@ -91,7 +91,9 @@ class SerbiaReferencesTest(unittest.TestCase):
         sha1, sha2, missing = 'a' * 40, 'b' * 40, 'c' * 40
         body = b'tree ignored\n\nTitle\n\nSource: https://example.org/source\nConsolidated: https://example.org/version\n'
         with tempfile.TemporaryDirectory() as temp, patch.object(serbia_refs, '_source_cache', OrderedDict()), \
+                patch.object(serbia_refs, '_message_cache', OrderedDict()), \
                 patch.object(serbia_refs.law, '_store', return_value=Path(temp)), \
+                patch.object(serbia_refs.law, 'corpus_dir', return_value=Path(temp)), \
                 patch.object(serbia_refs.law, '_cat_batch', return_value=[(b'commit', body), (b'commit', body), (b'missing', None)]) as batch:
             result = serbia_refs.sources_many([sha1, sha1, sha2, missing], mcp.links_from_body)
             self.assertEqual(batch.call_args.args[1], [sha1, sha2, missing])
@@ -100,8 +102,54 @@ class SerbiaReferencesTest(unittest.TestCase):
             self.assertEqual(serbia_refs.sources_many([sha1, sha2], mcp.links_from_body), result)
             batch.assert_called_once()
             serbia_refs._source_cache.clear()
+            serbia_refs._message_cache.clear()
             self.assertEqual(serbia_refs.sources_many([sha1, sha2], mcp.links_from_body), result)
             batch.assert_called_once()  # disk cache is shared with upstream
+
+    def test_source_reference_is_per_exact_version_and_never_guessed(self):
+        gazette = '1' * 40
+        baseline = '2' * 40
+        correction = '3' * 40
+        ambiguous = '4' * 40
+        messages = {
+            gazette: 'Zakon (Sl. glasnik RS, br. 35/2019)\nPublished: Службени гласник РС бр. 35/2019',
+            baseline: '',
+            correction: 'Ispravka, Службени гласник РС бр. 12/2020',
+            ambiguous: 'Act Sl. glasnik RS 12/2020\\nCorrection published in Sl. glasnik RS 13/2020',
+        }
+        with patch.object(serbia_refs, 'messages_many', return_value=messages), \
+                patch.object(serbia_refs.law, 'corpus_dir', return_value=Path('/tmp')):
+            _, history = serbia_refs.enrich('provision_history', '', {'changes': [
+                {'commit': gazette, 'law': 'Zakon', 'corpus': serbia_refs.CORPUS, 'superseded_by': correction},
+                {'commit': baseline, 'law': 'Baseline', 'corpus': serbia_refs.CORPUS},
+                {'commit': correction, 'law': 'Ispravka', 'corpus': serbia_refs.CORPUS, 'restates': gazette},
+                {'commit': ambiguous, 'law': 'Act', 'corpus': serbia_refs.CORPUS},
+            ]}, mcp.corpus_head)
+        rows = history['changes']
+        self.assertEqual(rows[0]['source_ref'], {
+            'type': 'gazette_issue', 'publisher': 'Službeni glasnik Republike Srbije',
+            'number': '35/2019', 'evidence': 'recorded Serbian law title or commit message',
+        })
+        self.assertEqual(rows[0]['source_ref_status'], 'identified')
+        self.assertIsNone(rows[1]['source_ref'])
+        self.assertEqual(rows[1]['source_ref_status'], 'unknown')
+        self.assertEqual(rows[2]['source_ref']['number'], '12/2020')
+        self.assertEqual(rows[2]['source_ref_status'], 'identified')
+        self.assertIsNone(rows[3]['source_ref'])
+        self.assertEqual(rows[3]['source_ref_status'], 'ambiguous')
+        self.assertEqual(rows[3]['source_ref_candidates'], ['12/2020', '13/2020'])
+
+        with patch.object(serbia_refs, 'messages_many', return_value={gazette: messages[gazette]}), \
+                patch.object(serbia_refs.law, 'corpus_dir', return_value=Path('/tmp')):
+            _, exact = serbia_refs.enrich('read_version', '', {'version_id': gazette, 'law': 'Zakon'}, mcp.corpus_head)
+            _, compared = serbia_refs.enrich('compare_versions', '', {
+                'from': {'version_id': gazette, 'law': 'Zakon'},
+                'to': {'version_id': baseline, 'law': 'Baseline'},
+            }, mcp.corpus_head)
+        self.assertEqual(exact['source_ref']['number'], '35/2019')
+        self.assertEqual(compared['from']['source_ref']['number'], '35/2019')
+        self.assertIsNone(compared['to']['source_ref'])
+        self.assertEqual(compared['to']['source_ref_status'], 'unknown')
 
     def test_compare_dates_links_changes(self):
         data = self.call('compare_dates', {'path': PATH, 'date_a': '2019-05-28', 'date_b': '2019-05-29'})

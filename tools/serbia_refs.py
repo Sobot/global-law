@@ -8,12 +8,14 @@ import threading
 from urllib.parse import quote
 
 import law
+from serbia_citations import gazettes
 
 CORPUS = 'serbia/national/acts'
 REPO = 'https://github.com/lexifina/serbia-law'
 DETAIL_LINK_LIMIT = 60  # same bound as upstream's law_details diffs
 SOURCE_CACHE_LIMIT = 4096
 _source_cache = OrderedDict()
+_message_cache = OrderedDict()
 _source_lock = threading.Lock()
 TOOLS = {'read_law', 'provision_history', 'compare_dates', 'law_details', 'laws_between',
          'search_changes', 'who_wrote', 'find_provision', 'list_provisions', 'search_law',
@@ -25,20 +27,18 @@ def provision_path(path):
             and '\n' not in path and '\r' not in path)
 
 
-def sources_many(shas, parse_links):
-    """Read only uncached commits in one Git batch; share upstream's immutable .msg cache."""
-    out, missing = {}, []
+def messages_many(shas):
+    """Read uncached Serbian change messages in one Git batch, sharing the immutable message cache."""
+    bodies, missing = {}, []
     with _source_lock:
         for sha in dict.fromkeys(shas):
-            if sha in _source_cache:
-                out[sha] = _source_cache[sha]
-                _source_cache.move_to_end(sha)
+            if sha in _message_cache:
+                bodies[sha] = _message_cache[sha]
+                _message_cache.move_to_end(sha)
             else:
                 missing.append(sha)
-    if not missing:
-        return out
-    bodies, uncached = {}, []
     store = law._store() / 'blobs'
+    uncached = []
     for sha in missing:
         try:
             bodies[sha] = (store / sha[:2] / f'{sha}.msg').read_text(encoding='utf-8')
@@ -47,8 +47,7 @@ def sources_many(shas, parse_links):
     if uncached:
         for sha, (kind, raw) in zip(uncached, law._cat_batch(law.corpus_dir(CORPUS), uncached)):
             if kind != b'commit' or raw is None or b'\n\n' not in raw:
-                continue  # do not cache missing objects as empty sources
-            # Do not populate the shared message cache with lossy decoding.
+                continue
             try:
                 body = raw.split(b'\n\n', 1)[1].decode('utf-8')
             except UnicodeDecodeError:
@@ -63,14 +62,46 @@ def sources_many(shas, parse_links):
                     f.write(body.encode('utf-8'))
                 os.replace(tmp, kept)
             except OSError:
-                pass  # an unwritable optional cache must not hide sources
+                pass  # an unwritable optional cache must not hide source metadata
             finally:
                 if tmp:
                     try:
                         os.unlink(tmp)
                     except OSError:
                         pass
-    parsed = {sha: tuple(parse_links(body)) for sha, body in bodies.items()}
+    with _source_lock:
+        for sha, body in bodies.items():
+            _message_cache[sha] = body
+            _message_cache.move_to_end(sha)
+        while len(_message_cache) > SOURCE_CACHE_LIMIT:
+            _message_cache.popitem(last=False)
+    return bodies
+
+
+def source_reference(title, message):
+    """Return a Gazette issue only when the recorded Serbian source reference is unambiguous."""
+    numbers = list(dict.fromkeys(gazettes(f'{title or ""}\n{message or ""}')))
+    if len(numbers) == 1:
+        return {'source_ref': {
+            'type': 'gazette_issue', 'publisher': 'Službeni glasnik Republike Srbije',
+            'number': numbers[0], 'evidence': 'recorded Serbian law title or commit message',
+        }, 'source_ref_status': 'identified'}
+    if numbers:
+        return {'source_ref': None, 'source_ref_status': 'ambiguous', 'source_ref_candidates': numbers}
+    return {'source_ref': None, 'source_ref_status': 'unknown'}
+
+
+def sources_many(shas, parse_links):
+    """Parse official links from change messages, with a bounded cache."""
+    out, missing = {}, []
+    with _source_lock:
+        for sha in dict.fromkeys(shas):
+            if sha in _source_cache:
+                out[sha] = _source_cache[sha]
+                _source_cache.move_to_end(sha)
+            else:
+                missing.append(sha)
+    parsed = {sha: tuple(parse_links(body)) for sha, body in messages_many(missing).items()}
     with _source_lock:
         for sha, info in parsed.items():
             _source_cache[sha] = info
@@ -84,7 +115,7 @@ def sources_many(shas, parse_links):
 def enrich(tool, text, data, corpus_head, parse_links=None):
     if tool not in TOOLS:
         return text, data
-    links, pending = [], []
+    links, pending, source_ref_rows = [], [], []
     shas, versions, changes = {}, {}, {}
     cwd = law.corpus_dir(CORPUS)
 
@@ -143,11 +174,13 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
     elif tool == 'read_version':
         commit_ref(data, data.get('version_id'))
         file_ref(data, data.get('version_id'), data.get('path'))
+        source_ref_rows.append(data)
     elif tool == 'compare_versions':
         for side in ('from', 'to'):
             row = data.get(side) or {}
             commit_ref(row, row.get('version_id'))
             file_ref(row, row.get('version_id'), row.get('path'))
+            source_ref_rows.append(row)
     elif tool == 'law_details':
         for change in data.get('changes', []):
             if change.get('corpus') != CORPUS:
@@ -174,6 +207,8 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
             change_refs(data.get('related_changes', []))
     elif tool in ('provision_history', 'compare_dates', 'laws_between', 'search_changes'):
         change_refs(data.get('changes', []), data.get('path'), files=tool in ('provision_history', 'compare_dates'))
+        if tool == 'provision_history':
+            source_ref_rows.extend(data.get('changes', []))
     elif tool == 'who_wrote':
         dated_ref(data, data.get('date'), data.get('path'))
     elif tool == 'resolve_citations':
@@ -190,6 +225,12 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
             for row in corpus.get('provisions', []):
                 if row.get('change') != 'removed':
                     dated_ref(row, data.get('date_b'), row.get('path'))
+
+    source_ids = [(row, row.get('commit') or row.get('version_id')) for row in source_ref_rows]
+    valid_ids = [sha for _, sha in source_ids if isinstance(sha, str) and re.fullmatch(r'[0-9a-f]{40}', sha)]
+    messages = messages_many(valid_ids)
+    for row, sha in source_ids:
+        row.update(source_reference(row.get('law'), messages.get(sha, '')))
 
     def existing(pairs):
         # Use upstream's subprocess wrapper so deadlines and cancellation apply.
