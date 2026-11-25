@@ -19,6 +19,7 @@ INSTRUCTIONS = (
     '(npr. čl. 21 st. 1 ZKP); za više citata resolve_citations; za tematsku pretragu search_law. '
     'Navedi datum primene propisa (YYYY-MM-DD), ne datum Git commita. Citiraj naziv propisa, član, '
     'provereni stav/tačku i službene izvore: prvenstveno cite.official_url, zatim source_links/sources iz rezultata pretrage. '
+    'Tačna verzija sadrži source_ref za jednoznačno evidentiran broj Službenog glasnika; source_ref_status unknown ili ambiguous znači da broj ne treba nagađati. '
     'Za tačan Git commit koristi read_version i compare_versions sa punim ID-jem iz provision_history; datumi nisu zamena za ID verzije. '
     'Navedi šta službeni link prikazuje: Consolidated je verzija teksta, Source je izvor evidentirane izmene i ne mora prikazivati važeći tekst. '
     'Uz službeni izvor izaberi najrelevantniji GitHub link: file_url za citiranje celog teksta na datum, '
