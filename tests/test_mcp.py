@@ -1884,6 +1884,106 @@ class EndsAndPartialRepeals(unittest.TestCase):
         self.assertIn('saves some provisions', read['text'])
 
 
+class ExactVersionTools(unittest.TestCase):
+    """Exact version IDs are accepted only for the provision in whose history they appear."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        sys.path.insert(0, str(ROOT))
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('global_law_test_fixtures', ROOT / 'tests' / 'test_law_fixtures.py')
+        fixtures = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = fixtures
+        spec.loader.exec_module(fixtures)
+        run = fixtures.run
+        t = cls.t = fixtures.Tree()
+        shutil.copy(ROOT / 'tools' / 'mcp_server.py', t.root / 'tools' / 'mcp_server.py')
+        (t.root / 'jurisdiction.json').write_text('{"name": "fixture", "jurisdictions": []}', encoding='utf-8')
+        run('add', 'jurisdiction.json', cwd=t.root)
+        corpus = t.corpus('aa/national/acts')
+        cls.path = 'aa/national/acts/act/a.md'
+        cls.first = corpus.commit('Act 1 of 2010', {'act/a.md': '# Article 1\n\nFirst paragraph.\n\nStable paragraph.\n'},
+                                  In_force='2010-01-01', Kind='law')
+        cls.second = corpus.commit('Act 2 of 2015', {'act/a.md': '# Article 1\n\nChanged paragraph.\n\nStable paragraph.\n\nAdded paragraph.\n'},
+                                   In_force='2015-01-01', Kind='law')
+        cls.correction = corpus.commit('Gazette correction', {'act/a.md': '# Article 1\n\nCorrected paragraph.\n\nStable paragraph.\n\nAdded paragraph.\n'},
+                                       In_force='2015-01-01', Kind='correction',
+                                       Corrects='Act 2 of 2015 2015-01-01..2019-12-31',
+                                       Supersedes=cls.second, Reason='Correction in fixture')
+        cls.unchanged = corpus.commit('Gazette clarification', {}, In_force='2017-01-01', Kind='correction',
+                                      Corrects='Act 2 of 2015 2017-01-01..2019-12-31',
+                                      Files='act/a.md', Supersedes='none', Reason='No text change')
+        cls.removal = corpus.commit('Repeal 2021', {'act/a.md': None}, In_force='2021-01-01', Kind='law')
+        cls.other = corpus.commit('Act 1 of 2022', {'act/other.md': 'Other provision.\n'}, In_force='2022-01-01', Kind='law')
+        t.pin()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.t.close()
+
+    def calls(self, *calls):
+        done = subprocess.run([sys.executable, '-X', 'utf8', '-c', UnreadableCheckouts.CALL], cwd=self.t.root,
+                              input=json.dumps(calls), capture_output=True, encoding='utf-8', timeout=300)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        return json.loads(done.stdout)
+
+    def test_exact_read_and_paragraph_diff(self):
+        exact, same, changed, paged, same_content = self.calls(
+            ('read_version', {'path': self.path, 'version_id': self.first}),
+            ('compare_versions', {'path': self.path, 'from_version_id': self.first, 'to_version_id': self.first}),
+            ('compare_versions', {'path': self.path, 'from_version_id': self.first, 'to_version_id': self.second}),
+            ('compare_versions', {'path': self.path, 'from_version_id': self.first, 'to_version_id': self.second,
+                                  'max_results': 1}),
+            ('compare_versions', {'path': self.path, 'from_version_id': self.correction,
+                                  'to_version_id': self.unchanged}),
+        )
+        self.assertFalse(exact['error'], exact['text'])
+        self.assertEqual(exact['data']['version_id'], self.first)
+        self.assertIn('First paragraph.', exact['data']['text'])
+        self.assertTrue(same['data']['unchanged'])
+        self.assertTrue(all(part['op'] == 'same' for paragraph in same['data']['paragraphs'] for part in paragraph))
+        self.assertFalse(changed['data']['unchanged'])
+        parts = changed['data']['paragraphs']
+        self.assertEqual(parts[0], [{'op': 'same', 'text': '# Article 1'}])
+        self.assertEqual(parts[1], [{'op': 'removed', 'text': 'First paragraph.'},
+                                    {'op': 'added', 'text': 'Changed paragraph.'}])
+        self.assertEqual(parts[2], [{'op': 'same', 'text': 'Stable paragraph.'}])
+        self.assertEqual(parts[3], [{'op': 'added', 'text': 'Added paragraph.'}])
+        self.assertEqual(paged['data']['page'], {'total': 4, 'shown': 1, 'offset': 0, 'next_offset': 1})
+        self.assertEqual(paged['data']['paragraphs'], parts[:1])
+        self.assertTrue(same_content['data']['unchanged'])
+        self.assertTrue(all(part['op'] == 'same' for paragraph in same_content['data']['paragraphs']
+                            for part in paragraph))
+
+    def test_correction_metadata_and_removed_provisions(self):
+        corrected, original, removed, diff = self.calls(
+            ('read_version', {'path': self.path, 'version_id': self.correction}),
+            ('read_version', {'path': self.path, 'version_id': self.second}),
+            ('read_version', {'path': self.path, 'version_id': self.removal}),
+            ('compare_versions', {'path': self.path, 'from_version_id': self.correction, 'to_version_id': self.removal}),
+        )
+        self.assertFalse(corrected['error'], corrected['text'])
+        self.assertEqual(corrected['data']['kind'], 'correction')
+        self.assertEqual(corrected['data']['supersedes'], self.second)
+        self.assertIn('Corrected paragraph.', corrected['data']['text'])
+        self.assertIn(self.correction, original['data']['superseded_by'])
+        self.assertTrue(removed['data']['removed'])
+        self.assertIsNone(removed['data']['text'])
+        self.assertTrue(all(part['op'] == 'removed' for paragraph in diff['data']['paragraphs'] for part in paragraph))
+        self.assertTrue(diff['data']['to']['removed'])
+
+    def test_rejects_bad_or_other_provision_version_ids(self):
+        malformed, wrong_path = self.calls(
+            ('read_version', {'path': self.path, 'version_id': 'deadbeef'}),
+            ('read_version', {'path': self.path, 'version_id': self.other}),
+        )
+        self.assertTrue(malformed['error'])
+        self.assertIn('full 40-character', malformed['text'])
+        self.assertTrue(wrong_path['error'])
+        self.assertIn('not in the history of', wrong_path['text'])
+
+
 class Choosing(unittest.TestCase):
     """A clone may hold some countries, and a user may narrow the server to some: what is left out is named, with
     the command that adds it, and never fails a tool."""
@@ -3050,6 +3150,9 @@ class TestToolSurface(unittest.TestCase):
         self.assertIn('docket', tools['find_provision']['description'])
         self.assertTrue(tools['check_precedent']['description'].startswith('The judgments the record holds for a provision'))
         self.assertIn('paths', tools['read_law']['inputSchema']['properties'])
+        self.assertEqual(tools['read_version']['inputSchema']['required'], ['path', 'version_id'])
+        self.assertEqual(tools['compare_versions']['inputSchema']['required'], ['path', 'from_version_id', 'to_version_id'])
+        self.assertIn('max_results', tools['compare_versions']['inputSchema']['properties'])
 
     def test_hosted_instructions(self):
         code = "import sys; sys.path.insert(0, 'tools'); sys.dont_write_bytecode = True; import mcp_server as M; print(M.INSTRUCTIONS)"

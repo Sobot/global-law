@@ -27,10 +27,13 @@ class SerbiaProfileTest(unittest.TestCase):
 
     def test_localized_tools(self):
         tools = {t['name']: t for t in mcp.tool_list()}
-        self.assertEqual(len(tools), 17)
+        self.assertEqual(len(tools), 19)
         self.assertNotIn('world_on_date', tools)
         self.assertNotIn('check_precedent', tools)
         self.assertIn('Pronađi', tools['get_provision']['title'])
+        self.assertIn('tačnu verziju', tools['read_version']['title'])
+        self.assertIn('tačne verzije', tools['compare_versions']['title'])
+        self.assertEqual(tools['compare_versions']['inputSchema']['required'], ['path', 'from_version_id', 'to_version_id'])
         self.assertNotIn('judgments', tools['search_law']['inputSchema']['properties']['kind']['enum'])
 
     def test_find_article_and_whole_act(self):
@@ -58,6 +61,34 @@ class SerbiaProfileTest(unittest.TestCase):
         self.assertNotEqual(*versions)
         published = self.call('read_law', {'path': PATH, 'date': '2019-05-21'})
         self.assertEqual(published['text'], versions[0])
+
+    def test_exact_version_tools_use_pinned_serbian_history(self):
+        history = self.call('provision_history', {'path': PATH})['changes']
+        self.assertGreaterEqual(len(history), 2)
+        first, last = history[0], history[-1]
+        exact = self.call('read_version', {'path': PATH, 'version_id': first['commit']})
+        self.assertEqual(exact['path'], PATH)
+        self.assertEqual(exact['version_id'], first['commit'])
+        self.assertEqual(exact['in_force'], first['in_force'])
+        self.assertTrue(exact['text_present'])
+        self.assertTrue(exact['text'])
+        self.assertIn(first['commit'], exact['commit_url'])
+        self.assertIn(first['commit'], exact['file_url'])
+
+        same = self.call('compare_versions', {'path': PATH, 'from_version_id': first['commit'],
+                                              'to_version_id': first['commit']})
+        self.assertTrue(same['unchanged'])
+        self.assertTrue(all(part['op'] == 'same' for paragraph in same['paragraphs'] for part in paragraph))
+
+        changed = self.call('compare_versions', {'path': PATH, 'from_version_id': first['commit'],
+                                                 'to_version_id': last['commit']})
+        self.assertEqual(changed['from']['version_id'], first['commit'])
+        self.assertEqual(changed['to']['version_id'], last['commit'])
+        self.assertIn(first['commit'], changed['from']['file_url'])
+        self.assertIn(last['commit'], changed['to']['file_url'])
+        self.assertGreater(len(changed['paragraphs']), 3)
+        self.assertTrue(all(part['op'] in ('same', 'added', 'removed')
+                            for paragraph in changed['paragraphs'] for part in paragraph))
 
     @patch.object(mcp, 'scope_arg', return_value='serbia')
     def test_missing_fts_falls_back_to_git_search(self, _scope):

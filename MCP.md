@@ -510,6 +510,8 @@ its title and last change.
 | `world_on_date` | Every jurisdiction on one date: the last change in force in each, and the next. |
 | `who_wrote` | Which law wrote each word (or line), with words per law. The marked text is in the text answer and in `marked` (`[n]` opens a run by the law with `mark` n in `laws`). Words brought back when a temporary change ended stay with the law that first wrote them (`restored_by` names the law that brought them back). |
 | `compare_dates` | A word-level diff of a provision's text on `date_a` and on `date_b`, and the laws that took effect after `date_a`, up to and including `date_b`. |
+| `read_version` | The exact text and correction/removal metadata for one provision version, identified by its full commit hash from `provision_history`. The commit must occur in that path's history. |
+| `compare_versions` | A structured paragraph diff between two exact commit IDs from `provision_history`: each part is `same`, `added` or `removed`; paragraph inserts and deletes remain explicit. `offset` and `max_results` page paragraph parts. |
 | `provision_history` | Every law that changed a provision, with its in-force, enacted or made, and published dates and its sources. |
 | `laws_between` | Every law that took effect in a window, `start` and `end` both included, with how many provisions each changed. |
 | `search_law` | Search the text of all the law in force on a date. |
@@ -566,8 +568,8 @@ before it knew (case law read in part, bodies of law not read for the time, or `
 1 to 200 of 238; pass offset 200 for the next." Rows come in one order on every call, so parts do not overlap. The
 earlier fields stay (`count`, `total`, `truncated`, `provision_count`). If a structured list is cut to fit the answer
 (`cut`), `page.next_offset` is the row after the last one it still holds. `what_else_changes` skips `offset` rows in
-each of its groups, and `page.total` is its largest group. `read_law`, `compare_dates` and `who_wrote` page their text
-by characters, as below.
+each of its groups, and `page.total` is its largest group. `read_law`, `read_version`, `compare_dates` and `who_wrote` page their text
+by characters, as below. `compare_versions` pages its structured paragraph parts by `offset` and `max_results`.
 
 ## Citing the official text
 
@@ -592,7 +594,7 @@ link for a version, the answer says so rather than offer this tree.
 
 ## Long provisions and long calls
 
-- **Long texts come in parts.** `read_law`, `compare_dates` and `who_wrote` give at most <!-- fig:page_chars -->40,000<!-- /fig --> characters of text at a
+- **Long texts come in parts.** `read_law`, `read_version`, `compare_dates` and `who_wrote` give at most <!-- fig:page_chars -->40,000<!-- /fig --> characters of text at a
   time (about 10,000 tokens; `max_chars` sets <!-- fig:page_least -->1,000<!-- /fig --> to <!-- fig:page_most -->100,000<!-- /fig -->). A longer text says "Part: characters 0 to 39,958 of
   6,541,961. For the next part, call again with offset=39958", and the structured answer gives the same as
   `text_part`, `word_diff_part`, `marked_part` or `lines_part`. Parts end at a line break or a space. One Spanish order

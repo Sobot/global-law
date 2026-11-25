@@ -17,7 +17,7 @@ _source_cache = OrderedDict()
 _source_lock = threading.Lock()
 TOOLS = {'read_law', 'provision_history', 'compare_dates', 'law_details', 'laws_between',
          'search_changes', 'who_wrote', 'find_provision', 'list_provisions', 'search_law',
-         'changes_between', 'resolve_citations', 'applies_to_case'}
+         'changes_between', 'resolve_citations', 'applies_to_case', 'read_version', 'compare_versions'}
 
 
 def provision_path(path):
@@ -140,6 +140,14 @@ def enrich(tool, text, data, corpus_head, parse_links=None):
     if tool == 'read_law':
         for row in data.get('provisions', [data]):
             read_ref(row)
+    elif tool == 'read_version':
+        commit_ref(data, data.get('version_id'))
+        file_ref(data, data.get('version_id'), data.get('path'))
+    elif tool == 'compare_versions':
+        for side in ('from', 'to'):
+            row = data.get(side) or {}
+            commit_ref(row, row.get('version_id'))
+            file_ref(row, row.get('version_id'), row.get('path'))
     elif tool == 'law_details':
         for change in data.get('changes', []):
             if change.get('corpus') != CORPUS:
