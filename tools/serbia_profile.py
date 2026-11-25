@@ -19,6 +19,7 @@ INSTRUCTIONS = (
     '(npr. čl. 21 st. 1 ZKP); za više citata resolve_citations; za tematsku pretragu search_law. '
     'Navedi datum primene propisa (YYYY-MM-DD), ne datum Git commita. Citiraj naziv propisa, član, '
     'provereni stav/tačku i službene izvore: prvenstveno cite.official_url, zatim source_links/sources iz rezultata pretrage. '
+    'Za tačan Git commit koristi read_version i compare_versions sa punim ID-jem iz provision_history; datumi nisu zamena za ID verzije. '
     'Navedi šta službeni link prikazuje: Consolidated je verzija teksta, Source je izvor evidentirane izmene i ne mora prikazivati važeći tekst. '
     'Uz službeni izvor izaberi najrelevantniji GitHub link: file_url za citiranje celog teksta na datum, '
     'file_diff_url za konkretnu izmenu člana (pre/posle), commit_url za akt o izmeni, njegove datume ili trailere. '
@@ -36,6 +37,8 @@ LABELS = {
     'read_law': ('Pročitaj propis', 'Tekst člana po putanji na datum primene, izvori, prethodna i naredna izmena. Može više putanja ili ceo propis.'),
     'who_wrote': ('Poreklo teksta člana', 'Koja izmena propisa je unela pojedine reči ili redove člana na datum.'),
     'compare_dates': ('Uporedi verzije', 'Uporedi tekst člana na dva datuma i izmene između njih.'),
+    'read_version': ('Pročitaj tačnu verziju', 'Pročitaj tekst tačne verzije člana po punom Git commit ID-ju iz istorije člana.'),
+    'compare_versions': ('Uporedi tačne verzije', 'Uporedi dve tačne verzije člana po Git commit ID-jevima; vraća strukturirane pasuse same, dodate ili uklonjene.'),
     'provision_history': ('Istorija člana', 'Sve evidentirane izmene člana, datumi objave i stupanja na snagu.'),
     'laws_between': ('Propisi u periodu', 'Izmene propisa koje su stupile na snagu u datom periodu, uključujući oba datuma.'),
     'search_law': ('Pretraži tekst propisa', 'Pretraži tekst propisa Srbije na datum, npr. godišnji odmor, naknada štete. Vraća službene izvore verzije, kada postoje, i GitHub permalink. Podržava oba pisma. Za različite padeže kratke fraze koristi morphology=true.'),
@@ -52,6 +55,8 @@ LABELS = {
 PARAMETERS = {
     'query': 'Upit na srpskom (ćirilica ili latinica).', 'jurisdiction': 'Opcioni uži opseg unutar Srbije (putanja propisa); podrazumevano cela Srbija.',
     'date': 'Datum primene YYYY-MM-DD; podrazumevano danas.', 'date_a': 'Prvi datum YYYY-MM-DD.', 'date_b': 'Drugi datum YYYY-MM-DD.',
+    'version_id': 'Pun Git commit ID verzije iz istorije člana, tačno 40 heksadecimalnih znakova.',
+    'from_version_id': 'Pun Git commit ID početne verzije iz istorije člana.', 'to_version_id': 'Pun Git commit ID završne verzije iz istorije člana.',
     'start': 'Početak perioda YYYY-MM-DD.', 'end': 'Kraj perioda YYYY-MM-DD.',
     'path': 'Putanja člana ili foldera iz rezultata pretrage, unutar serbia/national/acts.',
     'paths': 'Putanje više članova (umesto path).', 'max_results': 'Najveći broj rezultata.', 'offset': 'Preskoči rezultate (next_offset iz prethodnog odgovora).',

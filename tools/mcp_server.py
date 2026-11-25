@@ -5917,6 +5917,104 @@ def credit_restored(path: str, date: str, runs: list[dict]) -> str:
     return ''
 
 
+VERSION_ID = re.compile(r'[0-9a-f]{40}')
+VERSION_FIELDS = ('law', 'in_force', 'kind', 'enacted', 'published', 'corrects', 'until', 'supersedes',
+                  'restates', 'restated_because', 'reason', 'ends', 'repeal_notice')
+
+
+def version_entry(path: str, version_id) -> tuple[list[dict], dict]:
+    if not isinstance(version_id, str) or not VERSION_ID.fullmatch(version_id):
+        raise UserError('A version_id must be the full 40-character commit hash from provision_history.')
+    history = history_of(path)
+    row = next((h for h in history if h['commit'] == version_id), None)
+    if row is None:
+        raise UserError(f'Version {version_id[:12]} is not in the history of {path}; use provision_history for this path.')
+    return history, row
+
+
+def version_data(path: str, history: list[dict], row: dict, text: str | None = None) -> dict:
+    commit = row['commit']
+    superseded_by = []
+    for change in history:
+        if change['commit'] == commit:
+            continue
+        for key in ('restates', 'supersedes'):
+            target = change.get(key)
+            if isinstance(target, str) and target not in ('', 'none') and (commit.startswith(target) or target.startswith(commit)):
+                superseded_by.append(change['commit'])
+                break
+    data = {'path': path, 'version_id': commit, **{key: row[key] for key in VERSION_FIELDS if key in row},
+            'text_present': text is not None, 'removed': text is None,
+            'sources': sources_of(law.corpus_of(path)[0], commit), 'superseded_by': sorted(set(superseded_by))}
+    return data
+
+
+def t_read_version(args: dict) -> tuple[str, dict]:
+    path = path_arg(args.get('path', ''))
+    history, row = version_entry(path, args.get('version_id'))
+    text = run_law(law.read_version, path, row['commit'])
+    details = version_data(path, history, row, text)
+    label = f"{row.get('law') or row.get('kind', 'Version')} ({row['in_force']})"
+    summary = f"{path}: exact version {row['commit']} ({label})" + ('; the provision is removed in this version.' if text is None else '.')
+    if text is None:
+        return summary, {'summary': summary, **details, 'text': None}
+    part, place, where = page(text, args)
+    return summary + (f'\n{where}' if where else '') + '\n\n' + part, {
+        'summary': summary, **details, 'text': part, 'text_part': place,
+    }
+
+
+def version_paragraphs(text: str | None) -> list[str]:
+    """Use each non-empty source line as a paragraph: legal text is not always separated by blank lines."""
+    if text is None:
+        return []
+    body = law_words(text).replace('\r\n', '\n').replace('\r', '\n')
+    return [line for line in body.splitlines() if line.strip()]
+
+
+def paragraph_diff(before: list[str], after: list[str]) -> list[list[dict]]:
+    """Align paragraphs by exact text; changed pairs carry removed and added parts, inserts/deletes stay explicit."""
+    out = []
+    for op, a0, a1, b0, b1 in difflib.SequenceMatcher(None, before, after).get_opcodes():
+        if op == 'equal':
+            out.extend([[{'op': 'same', 'text': part}] for part in before[a0:a1]])
+        elif op == 'delete':
+            out.extend([[{'op': 'removed', 'text': part}] for part in before[a0:a1]])
+        elif op == 'insert':
+            out.extend([[{'op': 'added', 'text': part}] for part in after[b0:b1]])
+        else:
+            old, new = before[a0:a1], after[b0:b1]
+            paired = min(len(old), len(new))
+            out.extend([[{'op': 'removed', 'text': old[i]}, {'op': 'added', 'text': new[i]}] for i in range(paired)])
+            out.extend([[{'op': 'removed', 'text': part}] for part in old[paired:]])
+            out.extend([[{'op': 'added', 'text': part}] for part in new[paired:]])
+    return out
+
+
+def t_compare_versions(args: dict) -> tuple[str, dict]:
+    path = path_arg(args.get('path', ''))
+    history_a, row_a = version_entry(path, args.get('from_version_id'))
+    history_b, row_b = version_entry(path, args.get('to_version_id'))
+    text_a = run_law(law.read_version, path, row_a['commit'])
+    text_b = run_law(law.read_version, path, row_b['commit'])
+    before, after = version_paragraphs(text_a), version_paragraphs(text_b)
+    paragraphs = paragraph_diff(before, after)
+    offset = offset_arg(args, len(paragraphs))
+    limit = num(args, 'max_results', 200, MAX_ITEMS)
+    shown = paragraphs[offset:offset + limit]
+    place = page_of(len(paragraphs), len(shown), offset)
+    same = ((text_a is None and text_b is None) or
+            (text_a is not None and text_b is not None and before == after))
+    summary = (f'{path}: exact versions {row_a["commit"][:12]} → {row_b["commit"][:12]}; '
+               + ('their legal text is unchanged.' if same else f'{len(paragraphs)} structured paragraph part(s).'))
+    if place['next_offset'] is not None:
+        summary += f' Showing paragraph parts {offset + 1}–{offset + len(shown)} of {len(paragraphs)}; pass offset={place["next_offset"]} for the next.'
+    data = {'summary': summary, 'path': path,
+            'from': version_data(path, history_a, row_a, text_a), 'to': version_data(path, history_b, row_b, text_b),
+            'unchanged': same, 'paragraphs': shown, 'page': place}
+    return summary, data
+
+
 def t_compare_dates(args: dict) -> tuple[str, dict]:
     a, b, path = date_arg(args.get('date_a')), date_arg(args.get('date_b')), path_arg(args.get('path', ''))
     if a > b:
@@ -11867,6 +11965,14 @@ TOOLS = [
      ['path'], t_who_wrote),
     ('compare_dates', 'How a provision changed between two dates: a word-level diff of its text on date_a and its text on date_b, and the laws that took effect after date_a, up to and including date_b.',
      {'path': PATH, 'date_a': DAY, 'date_b': DAY, **PAGE}, ['path', 'date_a', 'date_b'], t_compare_dates),
+    ('read_version', 'Read the exact text of one recorded provision version by its full commit hash from provision_history. The hash must belong to this path; corrections and removals are identified in the result.',
+     {'path': PATH, 'version_id': {'type': 'string', 'description': 'Full 40-character commit hash from provision_history for this exact path.'}, **PAGE},
+     ['path', 'version_id'], t_read_version),
+    ('compare_versions', 'Compare two exact versions of one provision by their full commit hashes from provision_history. Returns machine-readable paragraph parts with same, added or removed text; paragraph insertions and removals remain explicit.',
+     {'path': PATH, 'from_version_id': {'type': 'string', 'description': 'Full 40-character commit hash from provision_history for this path.'},
+      'to_version_id': {'type': 'string', 'description': 'Full 40-character commit hash from provision_history for this path.'},
+      'max_results': at_most(200, MAX_ITEMS, 'Paragraph parts per answer'), 'offset': OFFSET},
+     ['path', 'from_version_id', 'to_version_id'], t_compare_versions),
     ('provision_history', 'Every law that changed a provision, oldest first, with its in-force, enacted or made, and published dates.',
      {'path': PATH}, ['path'], t_provision_history),
     ('laws_between', 'Every law that took effect between two dates, both days included, across all jurisdictions or one, in the order they took effect.',
@@ -11918,7 +12024,7 @@ TOOLS = [
 ALIASES = {'law_details': {'corpus': 'jurisdiction'}}
 # The list each tool gives in parts (offset, page): if the answer is cut to fit (fit_result), its page says so.
 PAGED = {'find_provision': ('results',), 'search_law': ('results',), 'laws_between': ('changes',), 'search_changes': ('changes',),
-         'phrase_history': ('changes',), 'list_provisions': ('provisions', 'folders')}
+         'phrase_history': ('changes',), 'list_provisions': ('provisions', 'folders'), 'compare_versions': ('paragraphs',)}
 HANDLERS = {name: fn for name, _, _, _, fn in TOOLS}
 
 # --- Serbian in Latin letters -----------------------------------------------------------------------------------------
@@ -12186,7 +12292,7 @@ def greek_plain(handler):
 
 HANDLERS['search_law'] = greek_plain(HANDLERS['search_law'])
 # Tools that read one file named by `path`: run under law.focus() so a case-law decision needs no corpus-wide index.
-FOCUSED_TOOLS = ('read_law', 'who_wrote', 'compare_dates', 'provision_history', 'applies_to_case')
+FOCUSED_TOOLS = ('read_law', 'who_wrote', 'compare_dates', 'read_version', 'compare_versions', 'provision_history', 'applies_to_case')
 PROPERTIES = {name: list(props) for name, _, props, _, _ in TOOLS}
 # Names AI clients give arguments that a tool takes under another name, read as the tool's own (the hosted server's
 # refusals, 12-19 Nov 2026: q, country, limit, from and to, a path prefix given to search_law as path). Each is read
@@ -12232,7 +12338,7 @@ INSTRUCTIONS = (
     'Questions with their own tool, ahead of a text search: what relies on, cites or uses the definitions of a provision '
     '(what_else_changes); which text applies to a case filed on a date (applies_to_case); who wrote the words '
     '(who_wrote); when words entered or left the law (phrase_history); whether a decision\'s text is still in force '
-    '(check_precedent); every citation in a brief (resolve_citations). '
+    '(check_precedent); exact version text and comparisons by commit ID (read_version, compare_versions); every citation in a brief (resolve_citations). '
     'Coverage is partial: each corpus holds only the law its description names (for example some acts of a country, or '
     'a court\'s decisions from a stated year), over a stated period, so "nothing found" means nothing in the record, not nothing in the '
     'law. Every answer states the limits of its record (where a record starts or ends); pass them on to the user. '
