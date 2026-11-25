@@ -42,15 +42,36 @@ class SerbiaProfileTest(unittest.TestCase):
         self.assertEqual(found[0]['path'], PATH)
 
     def test_dated_citation(self):
-        for citation, date in (('čl. 21 st. 1 ZKP', '2019-05-28'), ('ЗКП члан 21 став 1', '2019-05-29')):
+        versions = []
+        for citation, date, revision in (('čl. 21 st. 1 ZKP', '2019-05-28', '4c9c5100'),
+                                         ('ЗКП члан 21 став 1', '2019-05-29', '09019e8e')):
             expected = self.call('read_law', {'path': PATH, 'date': date})
             got = self.call('get_provision', {'citation': citation, 'date': date})
+            versions.append(got['text'])
             self.assertEqual(got['path'], PATH, got)
             self.assertEqual(got['file_url'], expected['file_url'])
+            self.assertIn(revision, got['file_url'])
             self.assertEqual(got['text'], expected['text'])
             self.assertEqual(got['requested']['paragraph'], 1)
             self.assertFalse(got['subdivision_verified'])
             self.assertTrue(got['cite']['official_url'])
+        self.assertNotEqual(*versions)
+        published = self.call('read_law', {'path': PATH, 'date': '2019-05-21'})
+        self.assertEqual(published['text'], versions[0])
+
+    @patch.object(mcp, 'scope_arg', return_value='serbia')
+    def test_missing_fts_falls_back_to_git_search(self, _scope):
+        args = {'query': 'godišnji odmor', 'jurisdiction': 'serbia'}
+        fallback = ('git result', {'results': [{'path': PATH}]})
+        with patch.object(serbia_profile.serbia_fts, 'prepare', return_value=None) as prepare, \
+             patch.dict(serbia_profile._BASE, {'search_law': lambda received: fallback}):
+            self.assertEqual(serbia_profile._search_law(args), fallback)
+            prepare.assert_called_once()
+        with patch.object(serbia_profile.serbia_fts, 'prepare', side_effect=OSError('unreadable index')), \
+             patch.dict(serbia_profile._BASE, {'search_law': lambda received: fallback}), \
+             self.assertLogs('serbia_profile', level='WARNING') as logs:
+            self.assertEqual(serbia_profile._search_law(args), fallback)
+        self.assertIn('using Git search', logs.output[0])
 
     def test_zkp_article_26_before_record(self):
         path = FOLDER + '/clan-026.md'

@@ -1,6 +1,7 @@
 """Serbian MCP interface; keep upstream's protocol, history and search engine."""
 from copy import deepcopy
 from functools import lru_cache
+import logging
 import re
 import subprocess
 import sqlite3
@@ -247,6 +248,7 @@ def _search_law(args):
             try:
                 prepared = serbia_fts.prepare(query, enabled)
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, sqlite3.Error):
+                logging.getLogger(__name__).warning('Serbian FTS unavailable; using Git search', exc_info=True)
                 prepared = None
             if prepared is not None:
                 text, data = upstream.t_search_law({**args, 'query': prepared})
@@ -258,7 +260,7 @@ def _search_law(args):
                         if info := metadata.get(row['path'][len(CORPUS) + 1:]):
                             row['serbia_metadata'] = info
                 except sqlite3.Error:
-                    pass  # optional metadata must not hide matching legal text
+                    logging.getLogger(__name__).warning('Serbian FTS metadata unavailable', exc_info=True)
                 data = {**data, 'search_backend': 'sqlite_fts5', 'morphology_applied': enabled}
                 if enabled:
                     note = 'Približna pretraga padežnih oblika; proveri relevantnost izvornog teksta.'
