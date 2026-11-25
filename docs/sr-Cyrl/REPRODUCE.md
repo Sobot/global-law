@@ -1,9 +1,9 @@
 <!-- upstream: REPRODUCE.md @ 8a81ec4d2256a865f829e97102652a8b52aa0641 -->
 # Git за светско право: како се овај репозиторијум прави и како се проверава
 
-> Превод оригинала [REPRODUCE.md](../../REPRODUCE.md) на српски.
+> Превод оригинала [REPRODUCE.md](../../REPRODUCE.md) на српски. Измене специфичне за српско издање означене су као „Напомена за српско издање“ и описане у [SRBIJA.md](SRBIJA.md).
 
-> Овај клон користи јавни корпус [lexifina/serbia-law](https://github.com/lexifina/serbia-law) као подмодул `serbia/national/acts`; он се ажурира из upstream-а, а не гради поново овде. `.github/workflows/sync-freshness.yml` ажурира његов пин.
+> **Напомена за српско издање:** Овај документ описује како је upstream (lexifina/global-law) изградио и одржава глобални корпус. Српско издање (Sobot/global-law) користи upstream корпус [lexifina/serbia-law](https://github.com/lexifina/serbia-law), закачен као подмодул `serbia/national/acts`, и не гради га поново; подмодули осталих држава су уклоњени. Пин за Србију дневно се усклађује са upstream-ом (`.github/workflows/sync-freshness.yml`). Остатак документа је веран превод и описује upstream-ов процес. Видите [SRBIJA.md](SRBIJA.md).
 
 Овај фајл бележи како се репозиторијум прави и како свако може да га провери само помоћу git-а. Има два дела. Од
 2. новембра 2026. репозиторијум расте искључиво fast-forward-ом: никада се не гради поново и ниједан већ објављени комит

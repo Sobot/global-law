@@ -205,11 +205,6 @@ and `py` that is new enough:
 `AGENTS.md` (and `CLAUDE.md`, which includes it) tells agents to answer questions about the law with these tools.
 To start the server by hand, `sh tools/mcp.sh` speaks MCP on stdin and stdout.
 
-For a trusted runtime that keeps code and data in separate checkouts, set `GLOBAL_LAW_ROOT` to the absolute path of
-the Git worktree root containing the corpus gitlinks and a valid `manifest.json` committed at `HEAD` (linked worktrees
-are supported). The Python modules still load from their own `tools` directory; this setting changes only the
-data/repository root. Invalid paths are rejected during import.
-
 The first answer after starting reads the whole timeline and lists every corpus, a few seconds on a full checkout. The
 server does that as soon as it starts, so by the time a client asks, it is usually done.
 
@@ -621,13 +616,6 @@ The server speaks both eras of MCP. Modern clients (revision 2026-07-28) send th
 itself in each result's `_meta`, gives cache hints on list and read results, and answers an unsupported version with
 error -32022 listing the versions it supports. Legacy clients (2025-11-25 back to 2024-11-05) open with `initialize`
 and are served as before.
-
-The public engine has no profile auto-discovery or jurisdiction-specific defaults. An application can import
-`tools/mcp_server.py`, set its server metadata, instructions and tool/resource registries before calling `main()`, and
-optionally set two hooks. `prepare_tool_arguments(name, args) -> dict` runs after argument aliases are normalized and
-before schema validation. `enrich_tool_result(name, text, data) -> (text, dict)` runs after the handler and before
-generic coverage notes are appended. Both default to unset, so the public stdio launcher always starts the generic
-engine.
 
 ## Security
 

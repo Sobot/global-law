@@ -22,7 +22,7 @@ class Translations(unittest.TestCase):
             base = git('rev-parse', 'HEAD')
             for name in ('A.md', 'B.md'):
                 (root / 'docs/sr-Cyrl' / name).write_text(f'<!-- upstream: {name} @ {base} -->\n# Превод\n', encoding='utf-8')
-            (root / 'docs/sr-Cyrl/EXTRA.md').write_text('# Extra local translation\n', encoding='utf-8')
+            (root / 'docs/sr-Cyrl/SRBIJA.md').write_text('# Само српско\n', encoding='utf-8')
             (root / 'B.md').write_text('two\n', encoding='utf-8')
             git('add', '.'), git('commit', '-qm', 'B changes')
 

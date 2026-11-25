@@ -1,0 +1,6 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "zakon",
+  "version": "0.1.0",
+  "description": "Претрага, цитирање и поређење прописа Републике Србије."
+}
